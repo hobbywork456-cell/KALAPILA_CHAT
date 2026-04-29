@@ -1,19 +1,17 @@
 import React, { useEffect, useState, useRef } from "react";
 import { 
-  Box, Paper, List, ListItem, ListItemButton, 
-  ListItemAvatar, ListItemText, Avatar, Divider, TextField, 
-  IconButton, Typography, AppBar, Toolbar, Badge 
+  Box, List, ListItem, ListItemButton, ListItemAvatar, 
+  ListItemText, Avatar, TextField, Typography, 
+  AppBar, Toolbar, Divider 
 } from "@mui/material";
-import { 
-  Send as SendIcon, 
-  Logout as LogoutIcon, 
-  Search as SearchIcon, 
-  Chat as ChatIcon,
-  ArrowBack as ArrowBackIcon
-} from "@mui/icons-material";
+import { Search as SearchIcon, Chat as ChatIcon } from "@mui/icons-material";
 import { API } from "../api";
 import { socket } from "../socket";
 import { useNavigate } from "react-router-dom";
+
+// Component Imports
+import Chat from "../components/Chat";
+import ProfileView from "../components/ProfileView";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -23,92 +21,80 @@ export default function Home() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
+  const [profileOpen, setProfileOpen] = useState(false);
   
   const bottomRef = useRef(null);
-  const timerRef = useRef(null); // Ref for the inactivity timer
+  const timerRef = useRef(null);
 
-  // --- LOGOUT LOGIC ---
+  // Logout Logic for Auto-Logout
   const handleLogout = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
     localStorage.removeItem("user");
     navigate("/login");
   };
 
-  // --- AUTO LOGOUT LOGIC ---
   const resetTimer = () => {
-    // Clear existing timer
     if (timerRef.current) clearTimeout(timerRef.current);
-    
-    // Set new timer for 2 minutes (120,000 ms)
-    timerRef.current = setTimeout(() => {
-      console.log("User inactive for 2 minutes. Logging out...");
-      handleLogout();
-    }, 120000); 
+    timerRef.current = setTimeout(() => handleLogout(), 120000); 
   };
 
   useEffect(() => {
-    // Events that signify the user is active
-    const activityEvents = ["mousemove", "mousedown", "keypress", "scroll", "touchstart"];
-
-    // Initialize timer
+    const events = ["mousemove", "mousedown", "keypress", "scroll", "touchstart"];
     resetTimer();
-
-    // Add listeners to reset the timer on activity
-    activityEvents.forEach((event) => {
-      window.addEventListener(event, resetTimer);
-    });
-
-    // Cleanup listeners and timer on component unmount
+    events.forEach((e) => window.addEventListener(e, resetTimer));
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
-      activityEvents.forEach((event) => {
-        window.removeEventListener(event, resetTimer);
-      });
+      events.forEach((e) => window.removeEventListener(e, resetTimer));
     };
   }, []);
 
-  // --- AUTH & USER DATA ---
   useEffect(() => {
-    if (!currentUser) {
-      navigate("/login");
-      return;
+    // 🔍 Validate user and subscription ID
+    if (!currentUser || !currentUser.subscriptionId) { 
+      navigate("/login"); 
+      return; 
     }
-    API.get("/auth/users").then((res) => {
-      setUsers(res.data.filter((u) => u._id !== currentUser._id));
-    });
+
+    // ✅ FETCH USERS: Scoped by subscriptionId
+    API.get(`/auth/users?subscriptionId=${currentUser.subscriptionId}`)
+      .then((res) => {
+        // Filter out the current user from the company list
+        setUsers(res.data.filter((u) => u._id !== currentUser._id));
+      })
+      .catch((err) => console.error("Error loading colleagues:", err));
+
     socket.emit("join", currentUser._id);
   }, [navigate]);
 
-  // --- CHAT SOCKET LOGIC ---
   useEffect(() => {
     if (!selectedUser) return;
     
+    // Request messages for this specific pair
     socket.emit("getMessages", { senderId: currentUser._id, receiverId: selectedUser._id });
     
     socket.on("messageHistory", (msgs) => setMessages(msgs));
-    
     socket.on("receiveMessage", (msg) => {
       if (msg.sender === selectedUser._id || msg.sender === currentUser._id) {
         setMessages((prev) => [...prev, msg]);
       }
     });
 
-    return () => {
-      socket.off("receiveMessage");
-      socket.off("messageHistory");
+    return () => { 
+      socket.off("receiveMessage"); 
+      socket.off("messageHistory"); 
     };
   }, [selectedUser, currentUser?._id]);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   const sendMessage = () => {
     if (!message.trim() || !selectedUser) return;
+    
+    // Note: Backend now checks subscriptionId match before saving/sending
     socket.emit("sendMessage", { 
-        senderId: currentUser._id, 
-        receiverId: selectedUser._id, 
-        message 
+      senderId: currentUser._id, 
+      receiverId: selectedUser._id, 
+      message 
     });
     setMessage("");
   };
@@ -116,155 +102,102 @@ export default function Home() {
   return (
     <Box sx={{ 
       display: "flex", 
-      height: "95vh", 
-      width: "85vw", 
-      bgcolor: "#c43636", 
-      margin: "auto",
-      mt: "2.5vh"
+      height: "100vh", 
+      width: "100vw", 
+      bgcolor: "#e3f2fd", 
+      margin: 0, 
+      padding: 0, 
+      overflow: "hidden", 
+      position: "fixed", 
+      top: 0, 
+      left: 0 
     }}>
-      {/* --- SIDEBAR --- */}
+      
+      {/* SIDEBAR */}
       <Box sx={{ 
-        width: { xs: selectedUser ? "0%" : "100%", md: "300px", lg: "320px" },
-        display: { xs: selectedUser ? "none" : "flex", md: "flex" },
-        flexDirection: "column",
-        bgcolor: "#fff",
-        borderRight: "1px solid #ddd",
+        width: { xs: selectedUser ? "0%" : "100%", md: "320px" }, 
+        display: { xs: selectedUser ? "none" : "flex", md: "flex" }, 
+        flexDirection: "column", bgcolor: "#ffffff", borderRight: "1px solid #bbdefb" 
       }}>
-        <AppBar position="static" sx={{ bgcolor: "#ededed", color: "#000", boxShadow: "none", borderBottom: "1px solid #ddd" }}>
-          <Toolbar variant="dense" sx={{ justifyContent: "space-between" }}>
-            <Avatar sx={{ width: 32, height: 32, bgcolor: "#1976d2", fontSize: "0.9rem" }}>
+        <AppBar position="static" sx={{ bgcolor: "#bbdefb", color: "#0d47a1", boxShadow: "none" }}>
+          <Toolbar variant="dense">
+            <Avatar sx={{ width: 32, height: 32, bgcolor: "#1976d2", mr: 1.5 }}>
               {currentUser?.name?.[0].toUpperCase()}
             </Avatar>
-            <IconButton size="small" onClick={handleLogout}><LogoutIcon fontSize="small" /></IconButton>
+            <Typography variant="subtitle1" fontWeight="bold">Chats</Typography>
+            {/* Displaying Subscription ID for reference (Optional) */}
+            <Typography variant="caption" sx={{ ml: "auto", opacity: 0.7 }}>
+              ID: {currentUser?.subscriptionId}
+            </Typography>
           </Toolbar>
         </AppBar>
 
-        <Box sx={{ p: 1 }}>
-          <TextField
-            fullWidth
-            size="small"
-            placeholder="Search..."
-            InputProps={{
-              startAdornment: <SearchIcon sx={{ color: "gray", mr: 1, fontSize: 18 }} />,
-            }}
-            sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2, bgcolor: "#f0f2f5", fontSize: "0.85rem" } }}
+        <Box sx={{ p: 2, bgcolor: "#f5f9ff" }}>
+          <TextField 
+            fullWidth size="small" placeholder="Search colleagues..." 
+            InputProps={{ startAdornment: <SearchIcon sx={{ color: "#90caf9", mr: 1 }} /> }}
+            sx={{ "& .MuiOutlinedInput-root": { borderRadius: 3, bgcolor: "#fff", fontSize: "0.85rem" } }}
           />
         </Box>
 
-        <List sx={{ flex: 1, overflowY: "auto", p: 0 }}>
+        <List sx={{ flex: 1, overflowY: "auto", py: 0 }}>
           {users.map((user) => (
             <React.Fragment key={user._id}>
               <ListItem disablePadding>
                 <ListItemButton 
-                    dense
-                    onClick={() => setSelectedUser(user)} 
-                    selected={selectedUser?._id === user._id}
+                  onClick={() => setSelectedUser(user)} 
+                  selected={selectedUser?._id === user._id}
+                  sx={{ "&.Mui-selected": { bgcolor: "#e3f2fd" } }}
                 >
-                  <ListItemAvatar sx={{ minWidth: 48 }}>
-                    <Badge overlap="circular" anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} variant="dot" color="success">
-                        <Avatar sx={{ width: 36, height: 36, bgcolor: "#5bc0de", fontSize: "1rem" }}>
-                          {user.name[0].toUpperCase()}
-                        </Avatar>
-                    </Badge>
+                  <ListItemAvatar>
+                    <Avatar sx={{ bgcolor: "#64b5f6" }}>{user.name[0].toUpperCase()}</Avatar>
                   </ListItemAvatar>
                   <ListItemText 
-                    primary={<Typography variant="body2" fontWeight={600}>{user.name}</Typography>} 
-                    secondary={<Typography variant="caption" noWrap>Click to chat</Typography>} 
+                    primary={<Typography variant="body2" fontWeight={600} color="#1a237e">{user.name}</Typography>} 
+                    secondary={<Typography variant="caption" color="textSecondary">Colleague</Typography>}
                   />
                 </ListItemButton>
               </ListItem>
-              <Divider variant="inset" component="li" sx={{ ml: "64px" }} />
+              <Divider sx={{ mx: 2, opacity: 0.5 }} />
             </React.Fragment>
           ))}
+          {users.length === 0 && (
+            <Typography variant="caption" sx={{ p: 3, textAlign: "center", display: "block", color: "text.secondary" }}>
+              No other members in this group yet.
+            </Typography>
+          )}
         </List>
       </Box>
 
-      {/* --- CHAT AREA --- */}
-      <Box sx={{ 
-        flex: 1, 
-        display: { xs: selectedUser ? "flex" : "none", md: "flex" }, 
-        flexDirection: "column", 
-        bgcolor: "#efeae2",
-      }}>
-        {selectedUser ? (
-          <>
-            <AppBar position="static" sx={{ bgcolor: "#ededed", color: "#000", boxShadow: "none", borderBottom: "1px solid #ddd" }}>
-              <Toolbar variant="dense">
-                <IconButton 
-                  size="small"
-                  sx={{ display: { md: "none" }, mr: 1 }} 
-                  onClick={() => setSelectedUser(null)}
-                >
-                  <ArrowBackIcon fontSize="small" />
-                </IconButton>
-                <Avatar sx={{ width: 32, height: 32, mr: 1.5, bgcolor: "#5bc0de", fontSize: "0.9rem" }}>
-                  {selectedUser.name[0].toUpperCase()}
-                </Avatar>
-                <Typography variant="body2" fontWeight="bold">{selectedUser.name}</Typography>
-              </Toolbar>
-            </AppBar>
-
-            <Box sx={{ 
-                flex: 1, 
-                p: 2, 
-                overflowY: "auto", 
-                display: "flex", 
-                flexDirection: "column",
-                backgroundImage: `url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')`,
-                backgroundSize: "400px"
-            }}>
-              {messages.map((msg, i) => {
-                const isMe = msg.sender?.toString() === currentUser?._id?.toString();
-                return (
-                  <Box key={i} sx={{ alignSelf: isMe ? "flex-end" : "flex-start", mb: 0.8, maxWidth: "80%" }}>
-                    <Paper elevation={1} sx={{ 
-                        p: "5px 10px", 
-                        bgcolor: isMe ? "#dcf8c6" : "#fff", 
-                        borderRadius: isMe ? "8px 0 8px 8px" : "0 8px 8px 8px" 
-                    }}>
-                      <Typography variant="body2" sx={{ fontSize: "0.88rem", lineHeight: 1.3 }}>{msg.message}</Typography>
-                      <Typography variant="caption" sx={{ display: "block", textAlign: "right", opacity: 0.5, fontSize: "0.65rem", mt: 0.3 }}>
-                         {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </Typography>
-                    </Paper>
-                  </Box>
-                );
-              })}
-              <div ref={bottomRef} />
-            </Box>
-
-            <Box sx={{ p: 1, bgcolor: "#f0f2f5", display: "flex", alignItems: "center", gap: 1 }}>
-              <TextField
-                fullWidth
-                placeholder="Type a message"
-                variant="outlined"
-                size="small"
-                autoComplete="off"
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                sx={{ 
-                    bgcolor: "#fff", 
-                    "& .MuiOutlinedInput-root": { borderRadius: 2, fontSize: "0.85rem" } 
-                }}
-              />
-              <IconButton 
-                size="small"
-                disabled={!message.trim()} 
-                onClick={sendMessage}
-                sx={{ bgcolor: "#00a884", color: "#fff", "&:hover": { bgcolor: "#008f72" }, p: 1 }}
-              >
-                <SendIcon fontSize="small" />
-              </IconButton>
-            </Box>
-          </>
-        ) : (
-          <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", bgcolor: "#f8f9fa" }}>
-            <ChatIcon sx={{ fontSize: 60, opacity: 0.1, mb: 1 }} />
-            <Typography variant="body2" color="textSecondary">Select a conversation to start</Typography>
+      {/* CHAT AREA */}
+      {selectedUser ? (
+        <>
+          <Chat 
+            selectedUser={selectedUser}
+            setSelectedUser={setSelectedUser}
+            messages={messages}
+            currentUser={currentUser}
+            message={message}
+            setMessage={setMessage}
+            sendMessage={sendMessage}
+            bottomRef={bottomRef}
+            setProfileOpen={setProfileOpen}
+          />
+          <ProfileView 
+            open={profileOpen} 
+            onClose={() => setProfileOpen(false)} 
+            user={selectedUser} 
+          />
+        </>
+      ) : (
+        <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", bgcolor: "#f0f7ff" }}>
+          <Box sx={{ opacity: 0.4, textAlign: "center" }}>
+             <ChatIcon sx={{ fontSize: 80, color: "#90caf9", mb: 2 }} />
+             <Typography variant="h6" color="#1976d2">Welcome to {currentUser?.subscriptionId} Space</Typography>
+             <Typography variant="body2" color="textSecondary">Select a colleague to start a private chat</Typography>
           </Box>
-        )}
-      </Box>
+        </Box>
+      )}
     </Box>
   );
 }

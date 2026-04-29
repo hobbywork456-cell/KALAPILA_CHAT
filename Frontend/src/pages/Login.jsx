@@ -1,12 +1,12 @@
 import React, { useState } from "react";
 import { 
   Box, Paper, TextField, Button, Typography, 
-  Avatar, Link, InputAdornment, IconButton 
+  Link, InputAdornment, IconButton, MenuItem 
 } from "@mui/material";
 import { 
-  LockOutlined as LockIcon,
   Visibility, 
-  VisibilityOff 
+  VisibilityOff,
+  Business as BusinessIcon
 } from "@mui/icons-material";
 import { API } from "../api";
 import { useNavigate } from "react-router-dom";
@@ -19,145 +19,144 @@ export default function Auth() {
     name: "",
     email: "",
     password: "",
-    role: "employee"
+    subscriptionId: "",
+    role: "member"
   });
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (e) => {
+    // Prevent default form behavior if this was inside a <form> tag
+    if(e) e.preventDefault();
+
     try {
       if (isLogin) {
-        // LOGIN LOGIC
+        console.log("Attempting Login with:", form.email);
+        
         const res = await API.post("/auth/login", { 
           email: form.email, 
           password: form.password 
         });
-        localStorage.setItem("user", JSON.stringify(res.data.user));
-        navigate("/");
+
+        console.log("Login Server Response:", res.data);
+
+        if (res.data.user) {
+          localStorage.setItem("user", JSON.stringify(res.data.user));
+          // Use a small timeout to ensure localStorage is set before navigation
+          setTimeout(() => {
+            navigate("/home");
+            window.location.reload(); // Force refresh to update Home state
+          }, 100);
+        }
       } else {
-        // REGISTER LOGIC
-        await API.post("/auth/register", form);
-        alert("Registration successful! Please login.");
-        setIsLogin(true); // Switch to login after success
+        if (!form.subscriptionId) return alert("Company ID is required");
+        
+        const res = await API.post("/auth/register", form);
+        alert(res.data.message || "Registration Successful!");
+        setIsLogin(true); 
       }
     } catch (err) {
-      console.error(err.response?.data);
-      alert(err.response?.data?.message || "Authentication failed");
+      console.error("Auth Error:", err.response?.data || err.message);
+      alert(err.response?.data?.message || "Something went wrong. Please try again.");
     }
   };
 
   return (
-    <Box sx={{ 
-      height: "100vh", 
-      display: "flex", 
-      flexDirection: "column",
-      alignItems: "center", 
-      justifyContent: "center", 
-      bgcolor: "#e3d9d9" // Matching your Home page background
-    }}>
-      <Paper elevation={3} sx={{ 
-        p: 4, 
-        width: "100%", 
-        maxWidth: 350, 
-        textAlign: "center",
-        borderRadius: 2,
-        bgcolor: "#fff"
-      }}>
-        {/* Instagram-style Logo/Header */}
-        <Typography variant="h4" sx={{ mb: 3, fontWeight: "bold", fontFamily: "cursive", color: "#c43636" }}>
-         KALA pila
+    <Box sx={{ height: "100vh", width: "100vw", display: "flex", alignItems: "center", justifyContent: "center", bgcolor: "#f0f7ff" }}>
+      <Paper elevation={6} sx={{ p: 4, width: "100%", maxWidth: 380, textAlign: "center", borderRadius: 3 }}>
+        <Typography variant="h4" sx={{ mb: 1, fontWeight: "bold", color: "#1976d2" }}>ChatApp</Typography>
+        <Typography variant="body2" sx={{ mb: 3, color: "#64b5f6" }}>
+          {isLogin ? "Welcome back!" : "Join your company network"}
         </Typography>
 
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {!isLogin && (
-            <TextField
-              fullWidth
-              size="small"
-              label="Full Name"
-              name="name"
-              onChange={handleChange}
-              sx={{ bgcolor: "#fafafa" }}
-            />
+            <TextField fullWidth size="small" label="Full Name" name="name" onChange={handleChange} />
           )}
 
-          <TextField
-            fullWidth
-            size="small"
-            label="Email"
-            name="email"
-            onChange={handleChange}
-            sx={{ bgcolor: "#fafafa" }}
+          <TextField 
+            fullWidth 
+            size="small" 
+            label="Email" 
+            name="email" 
+            type="email"
+            value={form.email}
+            onChange={handleChange} 
           />
 
           <TextField
-            fullWidth
-            size="small"
-            label="Password"
-            name="password"
+            fullWidth size="small" label="Password" name="password"
             type={showPassword ? "text" : "password"}
+            value={form.password}
             onChange={handleChange}
+            onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
             InputProps={{
               endAdornment: (
                 <InputAdornment position="end">
-                  <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
+                  <IconButton onClick={() => setShowPassword(!showPassword)}>
                     {showPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
                   </IconButton>
                 </InputAdornment>
               ),
             }}
-            sx={{ bgcolor: "#fafafa" }}
           />
 
           {!isLogin && (
-            <TextField
-              select
-              fullWidth
-              size="small"
-              name="role"
-              label="Role"
-              value={form.role}
-              onChange={handleChange}
-              SelectProps={{ native: true }}
-              sx={{ bgcolor: "#fafafa" }}
-            >
-              <option value="employee">Employee</option>
-              <option value="admin">Admin</option>
-            </TextField>
+            <>
+              <TextField
+                fullWidth size="small" label="Company Group ID" name="subscriptionId"
+                onChange={handleChange}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start"><BusinessIcon fontSize="small" color="primary" /></InputAdornment>
+                  ),
+                }}
+              />
+
+              <TextField
+                select
+                fullWidth
+                size="small"
+                name="role"
+                label="Role"
+                value={form.role}
+                onChange={handleChange}
+                sx={{ textAlign: "left" }}
+              >
+                <MenuItem value="member">Team Member</MenuItem>
+                <MenuItem value="admin">Company Admin</MenuItem>
+              </TextField>
+            </>
           )}
 
           <Button 
             fullWidth 
             variant="contained" 
             onClick={handleSubmit}
-            sx={{ 
-              mt: 1, 
-              bgcolor: "#00a884", // Using the green from your send button
-              "&:hover": { bgcolor: "#008f72" },
-              fontWeight: "bold",
-              textTransform: "none"
-            }}
+            sx={{ mt: 1, py: 1.2, bgcolor: "#1976d2", fontWeight: "bold", textTransform: "none" }}
           >
-            {isLogin ? "Log In" : "Sign Up"}
+            {isLogin ? "Log In" : "Create Account"}
           </Button>
         </Box>
 
-        <Box sx={{ mt: 3, pt: 2, borderTop: "1px solid #dbdbdb" }}>
-          <Typography variant="body2">
-            {isLogin ? "Don't have an account?" : "Have an account?"}{" "}
+        <Box sx={{ mt: 3, pt: 2, borderTop: "1px solid #e3f2fd" }}>
+          <Typography variant="body2" color="textSecondary">
+            {isLogin ? "Need an account?" : "Already a member?"}{" "}
             <Link 
               component="button" 
-              onClick={() => setIsLogin(!isLogin)}
-              sx={{ fontWeight: "bold", color: "#c43636", textDecoration: "none" }}
+              onClick={() => {
+                setIsLogin(!isLogin);
+                setForm({ name: "", email: "", password: "", subscriptionId: "", role: "member" });
+              }} 
+              sx={{ fontWeight: "bold" }}
             >
               {isLogin ? "Sign up" : "Log in"}
             </Link>
           </Typography>
         </Box>
       </Paper>
-
-
     </Box>
   );
 }

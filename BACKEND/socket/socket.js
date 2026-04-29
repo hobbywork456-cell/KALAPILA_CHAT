@@ -1,4 +1,5 @@
 const Message = require("../models/Message");
+const User = require("../models/User");
 
 let users = {}; // { userId: socketId }
 
@@ -13,47 +14,59 @@ const socketLogic = (io) => {
       console.log("👤 Joined:", userId);
     });
 
-    // ✅ SEND MESSAGE
+    // ✅ SEND MESSAGE (Scoped by Subscription)
     socket.on("sendMessage", async ({ senderId, receiverId, message }) => {
       try {
         if (!senderId || !receiverId || !message?.trim()) return;
 
-        const sender = senderId.toString();
-        const receiver = receiverId.toString();
+        // 🔍 1. Verify both users belong to the same subscription
+        const senderUser = await User.findById(senderId);
+        const receiverUser = await User.findById(receiverId);
 
-        // Save to DB
+        if (!senderUser || !receiverUser) return;
+
+        // 🔥 BLOCK if they are from different companies
+        if (senderUser.subscriptionId !== receiverUser.subscriptionId) {
+          console.warn("🚫 Security Alert: Cross-subscription message blocked!");
+          return;
+        }
+
+        // 2. Save to DB with subscriptionId
         const newMessage = await Message.create({
-          sender,
-          receiver,
-          message,
+          subscriptionId: senderUser.subscriptionId,
+          sender: senderId,
+          receiver: receiverId,
+          message: message.trim(),
         });
 
-        const receiverSocket = users[receiver];
+        const receiverSocket = users[receiverId.toString()];
 
-        // Send to receiver if online
+        // 3. Send to receiver if online
         if (receiverSocket) {
           io.to(receiverSocket).emit("receiveMessage", newMessage);
         }
 
-        // Always send back to sender
+        // 4. Always send back to sender
         socket.emit("receiveMessage", newMessage);
       } catch (err) {
         console.error("❌ Send Message Error:", err);
       }
     });
 
-    // ✅ GET CHAT HISTORY
+    // ✅ GET CHAT HISTORY (Scoped by Subscription)
     socket.on("getMessages", async ({ senderId, receiverId }) => {
       try {
         if (!senderId || !receiverId) return;
 
-        const sender = senderId.toString();
-        const receiver = receiverId.toString();
+        // 🔍 Verify sender to get their subscriptionId
+        const requester = await User.findById(senderId);
+        if (!requester) return;
 
         const messages = await Message.find({
+          subscriptionId: requester.subscriptionId, // 🔥 ONLY fetch within this company
           $or: [
-            { sender: sender, receiver: receiver },
-            { sender: receiver, receiver: sender },
+            { sender: senderId, receiver: receiverId },
+            { sender: receiverId, receiver: senderId },
           ],
         }).sort({ createdAt: 1 });
 

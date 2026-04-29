@@ -2,98 +2,77 @@ const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
 
-
 // ✅ REGISTER
 router.post("/register", async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, subscriptionId } = req.body;
 
-    // 🔍 Validate input
-    if (!name || !email || !password) {
+    if (!name || !email || !password || !subscriptionId) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
-    // 🔍 Check existing user
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ message: "User already exists" });
     }
 
-    // ✅ Create user
+    // 🔥 VALIDATION: If role is member, the company ID must already exist
+    if (role === "member") {
+      const companyExists = await User.findOne({ subscriptionId });
+      if (!companyExists) {
+        return res.status(400).json({ 
+          message: "Invalid Company ID. This ID does not exist. Please contact your Admin." 
+        });
+      }
+    }
+
     const user = new User({
       name,
       email,
       password,
-      role: role || "employee"
+      subscriptionId,
+      role: role || "member"
     });
 
     await user.save();
 
-    // ❌ Remove password before sending response
-    const userData = user.toObject();
-    delete userData.password;
-
-    res.status(201).json({
-      message: "User registered successfully",
-      user: userData
-    });
-
+    res.status(201).json({ message: "User registered successfully" });
   } catch (err) {
     console.error("REGISTER ERROR:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-
 // ✅ LOGIN
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-
-    // 🔍 Validate input
-    if (!email || !password) {
-      return res.status(400).json({ message: "Email & password required" });
-    }
-
-    // 🔍 Check user
     const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(400).json({ message: "User not found" });
-    }
+    if (!user) return res.status(400).json({ message: "User not found" });
 
-    // 🔐 Check password
     const isMatch = await user.comparePassword(password);
-    if (!isMatch) {
-      return res.status(400).json({ message: "Invalid password" });
-    }
+    if (!isMatch) return res.status(400).json({ message: "Invalid password" });
 
-    // ❌ Remove password
     const userData = user.toObject();
     delete userData.password;
 
-    res.status(200).json({
-      message: "Login successful",
-      user: userData
-    });
-
+    res.status(200).json({ message: "Login successful", user: userData });
   } catch (err) {
-    console.error("LOGIN ERROR:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-
-// ✅ GET ALL USERS (for chat list)
+// ✅ GET USERS (Filtered by Company)
 router.get("/users", async (req, res) => {
   try {
-    const users = await User.find().select("-password"); // ❌ hide password
+    const { subscriptionId } = req.query;
+    if (!subscriptionId) return res.status(400).json({ message: "ID required" });
 
+    const users = await User.find({ subscriptionId }).select("-password");
     res.status(200).json(users);
   } catch (err) {
-    console.error("GET USERS ERROR:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
-
 
 module.exports = router;
