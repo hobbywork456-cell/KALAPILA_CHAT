@@ -1,7 +1,7 @@
 import React from "react";
 import { 
   Drawer, Box, Avatar, Typography, 
-  IconButton, Divider 
+  IconButton 
 } from "@mui/material";
 import { 
   Close as CloseIcon, 
@@ -11,7 +11,7 @@ import {
   BadgeOutlined as BadgeIcon
 } from "@mui/icons-material";
 
-export default function ProfileView({ open, onClose, user }) {
+function ProfileView({ open, onClose, user }) {
   if (!user) return null;
 
   return (
@@ -53,22 +53,26 @@ export default function ProfileView({ open, onClose, user }) {
           mb: 1.5,
           borderBottom: "1px solid #e3f2fd"
         }}>
-          <Avatar sx={{ 
-            width: 140, 
-            height: 140, 
-            mb: 2, 
-            bgcolor: "#1976d2", 
-            fontSize: "3.5rem",
-            boxShadow: "0 8px 16px rgba(25, 118, 210, 0.2)"
-          }}>
-            {user.name[0].toUpperCase()}
+          {/* ✅ FIXED: Added src for profile picture and safe initials fallback */}
+          <Avatar 
+            src={user?.profilePic}
+            sx={{ 
+              width: 140, 
+              height: 140, 
+              mb: 2, 
+              bgcolor: "#1976d2", 
+              fontSize: "3.5rem",
+              boxShadow: "0 8px 16px rgba(25, 118, 210, 0.2)"
+            }}
+          >
+            {user?.name?.[0]?.toUpperCase()}
           </Avatar>
-          <Typography variant="h5" fontWeight="bold" color="#1a237e">{user.name}</Typography>
+          <Typography variant="h5" fontWeight="bold" color="#1a237e">{user?.name}</Typography>
           
           <Box sx={{ display: 'flex', alignItems: 'center', mt: 1, gap: 0.5 }}>
             <BadgeIcon sx={{ fontSize: 16, color: "#64b5f6" }} />
             <Typography variant="body2" color="textSecondary" sx={{ textTransform: 'capitalize' }}>
-              {user.role || "Member"}
+              {user?.role || "Member"}
             </Typography>
           </Box>
         </Box>
@@ -76,7 +80,7 @@ export default function ProfileView({ open, onClose, user }) {
         {/* --- DETAILS SECTIONS --- */}
         <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, p: 1 }}>
           
-          {/* Subscription / Company ID Section */}
+          {/* Company ID Section */}
           <Box sx={{ bgcolor: "#fff", p: 2.5, borderRadius: 2, mx: 1 }}>
             <Typography variant="caption" sx={{ fontWeight: "bold", color: "#1976d2", letterSpacing: 1 }}>
               COMPANY NETWORK
@@ -84,7 +88,7 @@ export default function ProfileView({ open, onClose, user }) {
             <Box sx={{ display: "flex", alignItems: "center", mt: 1.5, gap: 2 }}>
               <BusinessIcon sx={{ color: "#90caf9" }} />
               <Typography variant="body1" sx={{ color: "#1a237e", fontWeight: 500 }}>
-                {user.subscriptionId || "Private Group"}
+                {user?.subscriptionId || "Private Group"}
               </Typography>
             </Box>
           </Box>
@@ -97,7 +101,7 @@ export default function ProfileView({ open, onClose, user }) {
             <Box sx={{ display: "flex", alignItems: "flex-start", mt: 1.5, gap: 2 }}>
               <InfoIcon sx={{ color: "#90caf9", mt: 0.3 }} />
               <Typography variant="body1" sx={{ color: "#37474f", lineHeight: 1.5 }}>
-                {user.bio || "Hey there! I am using ChatApp."}
+                {user?.bio || "Hey there! I am using ChatApp."}
               </Typography>
             </Box>
           </Box>
@@ -110,7 +114,7 @@ export default function ProfileView({ open, onClose, user }) {
             <Box sx={{ display: "flex", alignItems: "center", mt: 1.5, gap: 2 }}>
               <EmailIcon sx={{ color: "#90caf9" }} />
               <Typography variant="body1" sx={{ color: "#37474f" }}>
-                {user.email}
+                {user?.email}
               </Typography>
             </Box>
           </Box>
@@ -120,3 +124,6 @@ export default function ProfileView({ open, onClose, user }) {
     </Drawer>
   );
 }
+
+
+export default ProfileView;
