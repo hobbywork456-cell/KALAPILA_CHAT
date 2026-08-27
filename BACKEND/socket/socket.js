@@ -1,73 +1,80 @@
 const Message = require("../models/Message");
 const User = require("../models/User");
-
+const callLogic = require("../routes/call");
 // Mapping of userId to socketId
-let users = {}; 
+let users = {};
 
 const socketLogic = (io) => {
   io.on("connection", (socket) => {
     console.log("🟢 User connected:", socket.id);
 
+    callLogic(socket, io, users);
+
     // 1. JOIN (Store user mapping)
     socket.on("join", (userId) => {
       if (userId) {
-        users[userId.toString()] = socket.id;
-        console.log(`👤 User ${userId} associated with socket ${socket.id}`);
+        const normalizedId = userId.toString();
+        users[normalizedId] = socket.id;
+        socket.data.userId = normalizedId;
+        console.log(`👤 User ${normalizedId} associated with socket ${socket.id}`);
+        console.log("Current user map:", users);
+        socket.emit("joined", { userId: normalizedId, socketId: socket.id });
+        io.emit("presence-update", { userId: normalizedId, socketId: socket.id, online: true });
       }
+    });
+
+    socket.on("get-online-users", () => {
+      const onlineUsers = Object.entries(users).map(([userId, socketId]) => ({ userId, socketId }));
+      socket.emit("online-users", onlineUsers);
     });
 
     // 2. SEND / SCHEDULE (Merged Text & Media Logic)
     socket.on("sendMessage", async ({ senderId, receiverId, message, fileUrl, fileType, scheduledTime }) => {
-  try {
-    let finalFileUrl = fileUrl;
+      try {
+        let finalFileUrl = fileUrl;
 
-    // 1. Handle Binary to Base64 conversion (prevents the 'Maximum call stack' crash)
-    if (fileUrl instanceof Buffer || fileUrl instanceof ArrayBuffer) {
-      const b64 = Buffer.from(fileUrl).toString("base64");
-      const mime = fileType === "image" ? "image/jpeg" : fileType === "video" ? "video/mp4" : "audio/mpeg";
-      finalFileUrl = `data:${mime};base64,${b64}`;
-    }
+        // Check if the data is binary (ArrayBuffer/Buffer)
+        if (fileUrl instanceof Buffer || fileUrl instanceof ArrayBuffer) {
+          const b64 = Buffer.from(fileUrl).toString("base64");
 
-    const sender = await User.findById(senderId);
-    if (!sender) return;
+          // Determine the correct MIME type prefix
+          const mime = fileType === "image" ? "image/jpeg" :
+            fileType === "video" ? "video/mp4" : "audio/mpeg";
 
-    // 2. Create the message in the database
-    const newMessage = await Message.create({
-      subscriptionId: sender.subscriptionId,
-      sender: senderId,
-      receiver: receiverId,
-      message: message || "",
-      fileUrl: finalFileUrl, 
-      fileType: fileType || "text",
-      status: scheduledTime ? "scheduled" : "sent",
-      scheduledTime: scheduledTime ? new Date(scheduledTime) : null
-    });
+          finalFileUrl = `data:${mime};base64,${b64}`;
+        }
 
-    // 3. Prepare the message for the Frontend
-    // We convert the Mongoose document to a plain JS object so we can add properties
-    const messageWithSender = newMessage.toObject();
-    messageWithSender.senderName = sender.name; // <--- Attach the NAME here
+        const sender = await User.findById(senderId);
+        if (!sender) return;
 
-    if (!scheduledTime) {
-      const recSocket = users[receiverId.toString()];
-      if (recSocket) {
-        // Send the message including the senderName to the receiver
-        io.to(recSocket).emit("receiveMessage", messageWithSender);
+        const newMessage = await Message.create({
+          subscriptionId: sender.subscriptionId,
+          sender: senderId,
+          receiver: receiverId,
+          message: message || "",
+          fileUrl: finalFileUrl, // Now safely stored as a Base64 string
+          fileType: fileType || "text",
+          status: scheduledTime ? "scheduled" : "sent",
+        });
+
+        const messageToEmit = newMessage.toObject();
+        messageToEmit.senderName = sender.name;
+
+        if (!scheduledTime) {
+          const recSocket = users[receiverId.toString()];
+          if (recSocket) io.to(recSocket).emit("receiveMessage", messageToEmit);
+        }
+        socket.emit("receiveMessage", messageToEmit);
+
+      } catch (err) {
+        console.error("Critical Upload Error:", err);
       }
-    }
-    
-    // Send it back to the sender as well
-    socket.emit("receiveMessage", messageWithSender);
-
-  } catch (err) {
-    console.error("Upload Error:", err);
-  }
-});
+    });
     // 3. EDIT
     socket.on("editMessage", async ({ messageId, newMessage, senderId }) => {
       try {
         const msg = await Message.findOneAndUpdate(
-          { _id: messageId, sender: senderId }, 
+          { _id: messageId, sender: senderId },
           { message: newMessage, isEdited: true },
           { new: true }
         );
@@ -86,7 +93,7 @@ const socketLogic = (io) => {
     socket.on("deleteMessage", async ({ messageId, senderId }) => {
       try {
         const msg = await Message.findOneAndDelete({ _id: messageId, sender: senderId });
-        
+
         if (msg) {
           const senderSocket = users[msg.sender.toString()];
           const receiverSocket = users[msg.receiver.toString()];
@@ -103,11 +110,11 @@ const socketLogic = (io) => {
         const messages = await Message.find({
           status: "sent",
           $or: [
-            { sender: senderId, receiver: receiverId }, 
+            { sender: senderId, receiver: receiverId },
             { sender: receiverId, receiver: senderId }
           ]
         }).sort({ createdAt: 1 });
-        
+
         socket.emit("messageHistory", messages);
       } catch (err) { console.error("History Error:", err); }
     });
@@ -118,6 +125,7 @@ const socketLogic = (io) => {
         if (users[userId] === socket.id) {
           console.log(`🔴 User ${userId} disconnected`);
           delete users[userId];
+          io.emit("presence-update", { userId, socketId: socket.id, online: false });
           break;
         }
       }

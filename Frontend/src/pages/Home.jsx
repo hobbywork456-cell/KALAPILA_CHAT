@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
-import { 
-  Box, List, ListItem, ListItemButton, ListItemAvatar, 
-  ListItemText, Avatar, TextField, Typography, 
+import {
+  Box, List, ListItem, ListItemButton, ListItemAvatar,
+  ListItemText, Avatar, TextField, Typography,
   AppBar, Toolbar, Divider, CircularProgress
 } from "@mui/material";
 import { Search as SearchIcon, Chat as ChatIcon } from "@mui/icons-material";
@@ -14,23 +14,32 @@ import 'react-toastify/dist/ReactToastify.css';
 import Chat from "../components/Chat";
 import ProfileView from "../components/ProfileView";
 import Profile from "../components/Profile";
+import CallHandler from "../components/CallHandler";
+
 
 export default function Home() {
   const navigate = useNavigate();
-  
+
   // 1. Safe parsing of localStorage
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem("user");
     return saved ? JSON.parse(saved) : null;
   });
- 
+
   const [users, setUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
   const [profileOpen, setProfileOpen] = useState(false);
   const [isMyProfileOpen, setIsMyProfileOpen] = useState(false);
-  
+
+
+  //------Call States-------
+  const [calling, setCalling] = useState(false);
+  const [incomingCall, setIncomingCall] = useState(null);
+  const [callType, setCallType] = useState("video");
+
+
   const bottomRef = useRef(null);
   const timerRef = useRef(null);
 
@@ -49,46 +58,50 @@ export default function Home() {
 
   const handleEditMessage = (messageId, newMessage, setEditingId) => {
     if (!currentUser) return;
-    socket.emit("editMessage", { 
-      messageId, 
-      newMessage, 
-      senderId: currentUser._id 
+    socket.emit("editMessage", {
+      messageId,
+      newMessage,
+      senderId: currentUser._id
     });
     setEditingId(null);
-    setMessage(""); 
+    setMessage("");
   };
 
   const handleDeleteMessage = (messageId) => {
     if (!currentUser) return;
-    socket.emit("deleteMessage", { 
-      messageId, 
+    socket.emit("deleteMessage", {
+      messageId,
       senderId: currentUser._id
     });
   };
-
+  const initiateCall = (userToCall, type = "video") => {
+    setSelectedUser(userToCall);
+    setCallType(type);
+    setCalling(true);
+  };
   const handleScheduleMessage = (text, time) => {
     if (!currentUser || !selectedUser) return;
     socket.emit("sendMessage", {
       senderId: currentUser._id,
       receiverId: selectedUser._id,
       message: text,
-      scheduledTime: time 
+      scheduledTime: time
     });
   };
 
   const sendMessage = (fileUrl = null, fileType = "text") => {
-  if (!message.trim() && !fileUrl) return;
+    if (!message.trim() && !fileUrl) return;
 
-  socket.emit("sendMessage", { 
-    senderId: currentUser._id, 
-    receiverId: selectedUser._id, 
-    message: message,
-    fileUrl: fileUrl,  // Send the Base64 here
-    fileType: fileType // Send "image", "video", or "audio"
-  });
+    socket.emit("sendMessage", {
+      senderId: currentUser._id,
+      receiverId: selectedUser._id,
+      message: message,
+      fileUrl: fileUrl,  // Send the Base64 here
+      fileType: fileType // Send "image", "video", or "audio"
+    });
 
-  setMessage("");
-};
+    setMessage("");
+  };
 
   // --- EFFECTS ---
 
@@ -105,57 +118,69 @@ export default function Home() {
 
     socket.emit("join", currentUser._id);
 
-    socket.on("messageUpdated", (updatedMsg) => {
-      setMessages((prev) => prev.map(m => m._id === updatedMsg._id ? updatedMsg : m));
-    });
+    const onMessageUpdated = (updatedMsg) => {
+      setMessages((prev) => prev.map((m) => m._id === updatedMsg._id ? updatedMsg : m));
+    };
 
-    socket.on("messageDeleted", (deletedId) => {
-      setMessages((prev) => prev.filter(m => m._id !== deletedId));
-    });
+    const onMessageDeleted = (deletedId) => {
+      setMessages((prev) => prev.filter((m) => m._id !== deletedId));
+    };
 
- socket.on("receiveMessage", (msg) => {
-  // Only show notification if the message is NOT from me
-  if (msg.sender.toString() !== currentUser._id.toString()) {
-    
-    const senderDisplayName = msg.senderName || "Someone";
-    
-    // If it's a file, show "Sent an image", otherwise show the text
-    const notificationText = msg.fileType !== "text" 
-      ? `Sent a ${msg.fileType}` 
-      : msg.message;
+    const onIncomingCall = (data) => {
+      setIncomingCall(data);
+    };
 
-    toast.info(`New message from ${senderDisplayName}: ${notificationText}`, {
-      position: "top-right",
-      autoClose: 3000,
-      icon: "💬"
-    });
-  }
+    const onCallEnded = () => {
+      setIncomingCall(null);
+      setCalling(false);
+    };
 
-  // Update messages state
-  setMessages((prev) => {
-    const exists = prev.find(m => m._id === msg._id);
-    if (exists) return prev;
-    return [...prev, msg];
-  });
-});
+    const onReceiveMessage = (msg) => {
+      if (msg.sender?.toString() !== currentUser._id.toString()) {
+        const senderDisplayName = msg.senderName || "Someone";
+        const notificationText = msg.fileType !== "text"
+          ? `Sent a ${msg.fileType}`
+          : msg.message;
+
+        toast.info(`New message from ${senderDisplayName}: ${notificationText}`, {
+          position: "top-right",
+          autoClose: 3000,
+          icon: "💬"
+        });
+      }
+
+      setMessages((prev) => {
+        const exists = prev.find((m) => m._id === msg._id);
+        if (exists) return prev;
+        return [...prev, msg];
+      });
+    };
+
+    socket.on("messageUpdated", onMessageUpdated);
+    socket.on("messageDeleted", onMessageDeleted);
+    socket.on("incoming-call", onIncomingCall);
+    socket.on("call-ended", onCallEnded);
+    socket.on("receiveMessage", onReceiveMessage);
 
     return () => {
-      socket.off("messageUpdated");
-      socket.off("messageDeleted");
-      socket.off("receiveMessage");
+      socket.off("messageUpdated", onMessageUpdated);
+      socket.off("messageDeleted", onMessageDeleted);
+      socket.off("incoming-call", onIncomingCall);
+      socket.off("call-ended", onCallEnded);
+      socket.off("receiveMessage", onReceiveMessage);
     };
   }, [socket, currentUser]);
 
   // Fetch History when user is selected
   useEffect(() => {
     if (!selectedUser || !currentUser) return;
-    
+
     socket.emit("getMessages", { senderId: currentUser._id, receiverId: selectedUser._id });
-    
+
     socket.on("messageHistory", (msgs) => setMessages(msgs));
 
-    return () => { 
-      socket.off("messageHistory"); 
+    return () => {
+      socket.off("messageHistory");
     };
   }, [selectedUser, currentUser]);
 
@@ -196,15 +221,15 @@ export default function Home() {
     <Box sx={{ display: "flex", height: "100vh", width: "100vw", bgcolor: "#e3f2fd", overflow: "hidden", position: "fixed" }}>
       <ToastContainer position="bottom-right" autoClose={3000} />
       {/* SIDEBAR */}
-      <Box sx={{ 
-        width: { xs: selectedUser ? "0%" : "100%", md: "320px" }, 
-        display: { xs: selectedUser ? "none" : "flex", md: "flex" }, 
-        flexDirection: "column", bgcolor: "#ffffff", borderRight: "1px solid #bbdefb" 
+      <Box sx={{
+        width: { xs: selectedUser ? "0%" : "100%", md: "320px" },
+        display: { xs: selectedUser ? "none" : "flex", md: "flex" },
+        flexDirection: "column", bgcolor: "#ffffff", borderRight: "1px solid #bbdefb"
       }}>
         <AppBar position="static" sx={{ bgcolor: "#bbdefb", color: "#0d47a1", boxShadow: "none" }}>
           <Toolbar variant="dense">
-            <Avatar 
-              onClick={() => setIsMyProfileOpen(true)} 
+            <Avatar
+              onClick={() => setIsMyProfileOpen(true)}
               sx={{ width: 32, height: 32, bgcolor: "#1be122", mr: 1.5, cursor: 'pointer' }}
               src={currentUser?.profilePic || ""}
             >
@@ -218,8 +243,8 @@ export default function Home() {
         </AppBar>
 
         <Box sx={{ p: 2, bgcolor: "#f5f9ff" }}>
-          <TextField 
-            fullWidth size="small" placeholder="Search colleagues..." 
+          <TextField
+            fullWidth size="small" placeholder="Search colleagues..."
             InputProps={{ startAdornment: <SearchIcon sx={{ color: "#90caf9", mr: 1 }} /> }}
             sx={{ "& .MuiOutlinedInput-root": { borderRadius: 3, bgcolor: "#fff", fontSize: "0.85rem" } }}
           />
@@ -230,16 +255,16 @@ export default function Home() {
           {users.map((user) => (
             <React.Fragment key={user._id}>
               <ListItem disablePadding>
-                <ListItemButton 
-                  onClick={() => setSelectedUser(user)} 
+                <ListItemButton
+                  onClick={() => setSelectedUser(user)}
                   selected={selectedUser?._id === user._id}
                   sx={{ "&.Mui-selected": { bgcolor: "#e3f2fd" } }}
                 >
                   <ListItemAvatar>
                     <Avatar src={user.profilePic} sx={{ bgcolor: "#64b5f6" }}>{user.name[0].toUpperCase()}</Avatar>
                   </ListItemAvatar>
-                  <ListItemText 
-                    primary={<Typography variant="body2" fontWeight={600} color="#1a237e">{user.name}</Typography>} 
+                  <ListItemText
+                    primary={<Typography variant="body2" fontWeight={600} color="#1a237e">{user.name}</Typography>}
                     secondary={<Typography variant="caption" color="textSecondary">Colleague</Typography>}
                   />
                 </ListItemButton>
@@ -253,7 +278,7 @@ export default function Home() {
       {/* CHAT AREA */}
       {selectedUser ? (
         <>
-          <Chat 
+          <Chat
             selectedUser={selectedUser}
             setSelectedUser={setSelectedUser}
             messages={messages}
@@ -266,19 +291,33 @@ export default function Home() {
             onEditMessage={handleEditMessage}
             onDeleteMessage={handleDeleteMessage}
             onScheduleMessage={handleScheduleMessage}
+            onStartCall={(type) => initiateCall(selectedUser, type)}
           />
-          <ProfileView 
-            open={profileOpen} 
-            onClose={() => setProfileOpen(false)} 
-            user={selectedUser} 
+
+          <ProfileView
+            open={profileOpen}
+            onClose={() => setProfileOpen(false)}
+            user={selectedUser}
+          />
+          <CallHandler
+            incomingCall={incomingCall}
+            setIncomingCall={setIncomingCall}
+            calling={calling}
+            setCalling={setCalling}
+            currentUser={currentUser}
+            selectedUser={selectedUser}
+            setSelectedUser={setSelectedUser}
+            users={users}
+            callType={callType}
+            setCallType={setCallType}
           />
         </>
       ) : (
         <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", bgcolor: "#f0f7ff" }}>
           <Box sx={{ opacity: 0.4, textAlign: "center" }}>
-             <ChatIcon sx={{ fontSize: 80, color: "#90caf9", mb: 2 }} />
-             <Typography variant="h6" color="#1976d2">Welcome to {currentUser?.subscriptionId} Space</Typography>
-             <Typography variant="body2" color="textSecondary">Select a colleague to start a chat</Typography>
+            <ChatIcon sx={{ fontSize: 80, color: "#90caf9", mb: 2 }} />
+            <Typography variant="h6" color="#1976d2">Welcome to {currentUser?.subscriptionId} Space</Typography>
+            <Typography variant="body2" color="textSecondary">Select a colleague to start a chat</Typography>
           </Box>
         </Box>
       )}

@@ -1,11 +1,11 @@
 import { io } from "socket.io-client";
 
-// Use an environment variable for the URL, or default to localhost
-const SOCKET_URL = "http://localhost:5000";
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://192.168.0.197:5000";
 
 export const socket = io(SOCKET_URL, {
-  autoConnect: true, 
+  autoConnect: true,
   reconnection: true,
   reconnectionAttempts: 5,
   reconnectionDelay: 1000,
+  transports: ["websocket", "polling"],
 });

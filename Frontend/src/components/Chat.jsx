@@ -1,29 +1,30 @@
 import React, { useState, useRef } from "react";
-import { 
-  Box, Paper, TextField, IconButton, Typography, 
+import {
+  Box, Paper, TextField, IconButton, Typography,
   AppBar, Toolbar, Avatar, Menu, MenuItem, Tooltip,
   Dialog, DialogTitle, DialogContent, DialogActions, Button
 } from "@mui/material";
-import { 
+import {
   Send as SendIcon, ArrowBack as ArrowBackIcon,
   MoreVert as MoreVertIcon, Edit as EditIcon,
   Delete as DeleteIcon, ScheduleSend as ScheduleIcon,
   Check as CheckIcon, Close as CloseIcon,
-  AttachFile as AttachIcon
+  AttachFile as AttachIcon,
+  Phone as PhoneIcon,
+  Videocam as VideocamIcon
 } from "@mui/icons-material";
-
-function Chat({ 
-  selectedUser, setSelectedUser, messages, currentUser, 
+function Chat({
+  selectedUser, setSelectedUser, messages, currentUser,
   message, setMessage, sendMessage, bottomRef, setProfileOpen,
-  onEditMessage, onDeleteMessage, onScheduleMessage
+  onEditMessage, onDeleteMessage, onScheduleMessage, onStartCall
 }) {
-  
+
   const [anchorEl, setAnchorEl] = useState(null);
   const [activeMsg, setActiveMsg] = useState(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduleDate, setScheduleDate] = useState("");
   const [editingId, setEditingId] = useState(null);
-  
+
   const fileInputRef = useRef(null);
 
   if (!selectedUser) return null;
@@ -52,28 +53,23 @@ function Chat({
 
   // --- FILE HANDLING LOGIC ---
   const handleFileUpload = (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
+    const file = e.target.files[0];
+    if (!file) return;
 
-  // 1. Check file size (Base64 can't handle huge files easily)
-  if (file.size > 5 * 1024 * 1024) { // 5MB limit
-    alert("File is too large. Please upload less than 5MB.");
-    return;
-  }
+    const reader = new FileReader();
 
-  const reader = new FileReader();
-  reader.onload = () => {
-    let type = "image";
-    if (file.type.startsWith("video")) type = "video";
-    if (file.type.startsWith("audio")) type = "audio";
+    reader.onload = () => {
+      let type = "image";
+      if (file.type.startsWith("video")) type = "video";
+      if (file.type.startsWith("audio")) type = "audio";
 
-    // reader.result is now an ArrayBuffer (Binary)
-    // This stops 'is-binary.js' from crashing
-    sendMessage(reader.result, type);
+      // ✅ SUCCESS: reader.result is now an ArrayBuffer.
+      // Socket.io will not crash because it knows exactly how to handle this.
+      sendMessage(reader.result, type);
+    };
+
+    reader.readAsArrayBuffer(file);
   };
-  
-  reader.readAsArrayBuffer(file); // Use ArrayBuffer instead of DataURL
-};
   const handleScheduleSubmit = () => {
     if (!scheduleDate || !message.trim()) return;
     onScheduleMessage(message, scheduleDate);
@@ -98,14 +94,38 @@ function Chat({
           <IconButton size="small" sx={{ display: { md: "none" }, mr: 1 }} onClick={() => setSelectedUser(null)}>
             <ArrowBackIcon fontSize="small" />
           </IconButton>
-          <Avatar 
+          <Avatar
             onClick={() => setProfileOpen(true)}
             sx={{ width: 36, height: 36, mr: 1.5, cursor: "pointer" }}
             src={selectedUser?.profilePic}
           />
+
           <Box sx={{ flexGrow: 1, cursor: "pointer" }} onClick={() => setProfileOpen(true)}>
             <Typography variant="subtitle2" fontWeight="bold">{selectedUser?.name}</Typography>
             <Typography variant="caption" color="success.main">online</Typography>
+          </Box>
+
+          <Box sx={{ display: "flex", gap: 0.5 }}>
+            <IconButton
+              onClick={(e) => {
+                e.stopPropagation();
+                onStartCall("audio");
+              }}
+              color="primary"
+              aria-label="start audio call"
+            >
+              <PhoneIcon />
+            </IconButton>
+            <IconButton
+              onClick={(e) => {
+                e.stopPropagation();
+                onStartCall("video");
+              }}
+              color="primary"
+              aria-label="start video call"
+            >
+              <VideocamIcon />
+            </IconButton>
           </Box>
         </Toolbar>
       </AppBar>
@@ -116,13 +136,13 @@ function Chat({
           const isMe = msg.sender?._id?.toString() === currentUser?._id?.toString() || msg.sender?.toString() === currentUser?._id?.toString();
           return (
             <Box key={msg._id || i} sx={{ alignSelf: isMe ? "flex-end" : "flex-start", mb: 1, maxWidth: "75%" }}>
-              <Paper elevation={0} sx={{ 
-                  p: "6px 10px", 
-                  bgcolor: isMe ? "#dcf8c6" : "#ffffff",
-                  borderRadius: isMe ? "10px 0px 10px 10px" : "0px 10px 10px 10px",
-                  boxShadow: "0 1px 1px rgba(0,0,0,0.1)",
-                  position: "relative",
-                  "&:hover .msg-actions": { opacity: 1 }
+              <Paper elevation={0} sx={{
+                p: "6px 10px",
+                bgcolor: isMe ? "#dcf8c6" : "#ffffff",
+                borderRadius: isMe ? "10px 0px 10px 10px" : "0px 10px 10px 10px",
+                boxShadow: "0 1px 1px rgba(0,0,0,0.1)",
+                position: "relative",
+                "&:hover .msg-actions": { opacity: 1 }
               }}>
                 <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                   {renderMessageContent(msg)}
@@ -176,7 +196,7 @@ function Chat({
         )}
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           <input type="file" accept="image/*,video/*,audio/*" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileUpload} />
-          
+
           <IconButton size="small" onClick={() => fileInputRef.current.click()} sx={{ color: "#54656f" }}>
             <AttachIcon />
           </IconButton>
@@ -201,13 +221,13 @@ function Chat({
             sx={{ bgcolor: "#ffffff", "& .MuiOutlinedInput-root": { borderRadius: 3, fontSize: "0.9rem" } }}
           />
 
-          <IconButton 
-            disabled={!message.trim() && !editingId} 
+          <IconButton
+            disabled={!message.trim() && !editingId}
             onClick={editingId ? () => onEditMessage(editingId, message, setEditingId) : sendMessage}
-            sx={{ 
-              bgcolor: (message.trim() || editingId) ? "#00a884" : "transparent", 
+            sx={{
+              bgcolor: (message.trim() || editingId) ? "#00a884" : "transparent",
               color: (message.trim() || editingId) ? "#fff" : "#54656f",
-              "&:hover": { bgcolor: "#008f72" } 
+              "&:hover": { bgcolor: "#008f72" }
             }}
           >
             {editingId ? <CheckIcon fontSize="small" /> : <SendIcon fontSize="small" />}

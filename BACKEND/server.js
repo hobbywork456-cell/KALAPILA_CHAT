@@ -62,8 +62,10 @@ initMessageScheduler(io);
 
 // 🚀 START SERVER
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
+
+server.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🕒 Message Scheduler: Active (Checking every 1 min)`);
+  console.log(`� Accessible at http://192.168.0.197:${PORT}`);
+  console.log(`�🕒 Message Scheduler: Active (Checking every 1 min)`);
   console.log(`🔒 Subscription-Group security enabled`);
 });

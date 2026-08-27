@@ -20,8 +20,8 @@ router.post("/register", async (req, res) => {
     if (role === "member") {
       const companyExists = await User.findOne({ subscriptionId });
       if (!companyExists) {
-        return res.status(400).json({ 
-          message: "Invalid Company ID. This ID does not exist. Please contact your Admin." 
+        return res.status(400).json({
+          message: "Invalid Company ID. This ID does not exist. Please contact your Admin."
         });
       }
     }

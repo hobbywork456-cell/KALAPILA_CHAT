@@ -3,6 +3,7 @@ import {
   Box, Paper, TextField, Button, Typography, 
   Link, InputAdornment, IconButton, MenuItem 
 } from "@mui/material";
+import { toast } from 'sonner';
 import { 
   Visibility, 
   VisibilityOff,
@@ -45,11 +46,12 @@ function Auth() {
       } else {
         if (!form.subscriptionId) return alert("Company ID is required");
         const res = await API.post("/auth/register", form);
-        alert(res.data.message || "Registration Successful!");
+       toast.success(res.data.message || "Registration Successful!");
         setIsLogin(true); 
       }
     } catch (err) {
-      alert(err.response?.data?.message || "Something went wrong.");
+     const errorMessage = err.response?.data?.message || "Something went wrong.";
+    toast.error(errorMessage);
     }
   };
 
