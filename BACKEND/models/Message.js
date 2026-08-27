@@ -3,8 +3,15 @@ const mongoose = require("mongoose");
 const messageSchema = new mongoose.Schema({
   subscriptionId: {
     type: String,
-    required: true,
+    required: false,
+    default: "",
     index: true 
+  },
+  spaceId: {
+    type: String,
+    required: false,
+    default: "",
+    index: true
   },
   sender: {
     type: mongoose.Schema.Types.ObjectId,

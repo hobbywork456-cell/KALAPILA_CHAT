@@ -2,44 +2,37 @@ const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
 
-// ✅ REGISTER
+// ✅ REGISTER (Name, Email, Password)
 router.post("/register", async (req, res) => {
   try {
-    const { name, email, password, role, subscriptionId } = req.body;
+    const { name, email, password } = req.body;
 
-    if (!name || !email || !password || !subscriptionId) {
-      return res.status(400).json({ message: "All fields are required" });
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: "Name, email, and password are required" });
     }
 
-    const existingUser = await User.findOne({ email });
+    if (password.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters long" });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const existingUser = await User.findOne({ email: cleanEmail });
     if (existingUser) {
-      return res.status(400).json({ message: "User already exists" });
-    }
-
-    // 🔥 VALIDATION: If role is member, the company ID must already exist
-    if (role === "member") {
-      const companyExists = await User.findOne({ subscriptionId });
-      if (!companyExists) {
-        return res.status(400).json({
-          message: "Invalid Company ID. This ID does not exist. Please contact your Admin."
-        });
-      }
+      return res.status(400).json({ message: "An account with this email already exists" });
     }
 
     const user = new User({
-      name,
-      email,
+      name: name.trim(),
+      email: cleanEmail,
       password,
-      subscriptionId,
-      role: role || "member"
     });
 
     await user.save();
 
-    res.status(201).json({ message: "User registered successfully" });
+    res.status(201).json({ message: "Account created successfully! You can now log in." });
   } catch (err) {
     console.error("REGISTER ERROR:", err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "Server error creating account" });
   }
 });
 

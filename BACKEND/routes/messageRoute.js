@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const mongoose = require("mongoose");
 const Message = require("../models/Message");
 
 // --- EDIT MESSAGE ---
@@ -67,4 +68,37 @@ router.post("/schedule", async (req, res) => {
   }
 });
 
-module.exports = router;
+// --- GET LATEST CONVERSATIONS ---
+// URL: /api/message/conversations/:userId
+router.get("/conversations/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+
+    // Find all sent messages involving this user
+    const messages = await Message.find({
+      status: "sent",
+      $or: [{ sender: userObjectId }, { receiver: userObjectId }]
+    }).sort({ createdAt: -1 });
+
+    // Map the most recent message per colleague
+    const latestMessages = {};
+    for (const msg of messages) {
+      const partnerId = msg.sender.toString() === userId ? msg.receiver.toString() : msg.sender.toString();
+      if (!latestMessages[partnerId]) {
+        latestMessages[partnerId] = {
+          message: msg.fileType !== "text" ? `[${msg.fileType}]` : msg.message,
+          createdAt: msg.createdAt,
+          fileType: msg.fileType
+        };
+      }
+    }
+
+    res.status(200).json(latestMessages);
+  } catch (err) {
+    console.error("Fetch conversations error:", err);
+    res.status(500).json(err);
+  }
+});
+
+module.exports = router;

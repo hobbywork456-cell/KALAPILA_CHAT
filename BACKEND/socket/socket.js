@@ -48,13 +48,15 @@ const socketLogic = (io) => {
         if (!sender) return;
 
         const newMessage = await Message.create({
-          subscriptionId: sender.subscriptionId,
+          subscriptionId: sender.subscriptionId || "",
+          spaceId: sender.spaceId || "",
           sender: senderId,
           receiver: receiverId,
           message: message || "",
-          fileUrl: finalFileUrl, // Now safely stored as a Base64 string
+          fileUrl: finalFileUrl, // Safely stored as Base64 or URL
           fileType: fileType || "text",
           status: scheduledTime ? "scheduled" : "sent",
+          scheduledTime: scheduledTime ? new Date(scheduledTime) : null,
         });
 
         const messageToEmit = newMessage.toObject();
@@ -63,8 +65,14 @@ const socketLogic = (io) => {
         if (!scheduledTime) {
           const recSocket = users[receiverId.toString()];
           if (recSocket) io.to(recSocket).emit("receiveMessage", messageToEmit);
+          socket.emit("receiveMessage", messageToEmit);
+        } else {
+          // If scheduled, notify sender with confirmation
+          socket.emit("messageScheduled", {
+            message: `Message scheduled for ${new Date(scheduledTime).toLocaleString()}`,
+            data: messageToEmit
+          });
         }
-        socket.emit("receiveMessage", messageToEmit);
 
       } catch (err) {
         console.error("Critical Upload Error:", err);

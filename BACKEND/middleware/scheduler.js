@@ -1,9 +1,8 @@
-const cron = require("node-cron");
 const Message = require("../models/Message");
+const User = require("../models/User");
 
 const initMessageScheduler = (io) => {
-  // Runs every minute
-  cron.schedule("* * * * *", async () => {
+  const checkAndReleaseScheduledMessages = async () => {
     try {
       const now = new Date();
 
@@ -21,22 +20,25 @@ const initMessageScheduler = (io) => {
 
           // 3. Real-time delivery via Socket.io
           if (io) {
-            // FIX: Changed .recipient to .receiver to match your schema
-            const receiverId = msg.receiver.toString();
-            const senderId = msg.sender.toString();
+            const sender = await User.findById(msg.sender);
+            const messageToEmit = msg.toObject();
+            messageToEmit.senderName = sender?.name || "Someone";
 
-            // Emit 'receiveMessage' so the UI updates exactly like a normal message
-            io.emit("receiveMessage", msg); 
-            
-            // Log it for your own tracking
-            console.log(`[Scheduler]: Message ${msg._id} released from ${senderId} to ${receiverId}`);
+            // Broadcast to all sockets (client-side filters for active chat)
+            io.emit("receiveMessage", messageToEmit);
+
+            console.log(`🕒 [Scheduler]: Message ${msg._id} released from ${msg.sender} (${sender?.name}) to ${msg.receiver}`);
           }
         }
       }
     } catch (err) {
       console.error("[Scheduler Error]:", err);
     }
-  });
+  };
+
+  // Run immediately on boot, then check every 10 seconds
+  checkAndReleaseScheduledMessages();
+  setInterval(checkAndReleaseScheduledMessages, 10000);
 };
 
-module.exports = initMessageScheduler;
+module.exports = initMessageScheduler;

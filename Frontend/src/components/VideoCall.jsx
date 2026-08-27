@@ -60,6 +60,7 @@ export default function VideoCall({
   // Refs
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
+  const remoteAudioRef = useRef(null);
   const containerRef = useRef(null);
   const peerConnection = useRef(null);
   const localStreamRef = useRef(null);
@@ -160,11 +161,23 @@ export default function VideoCall({
         const pc = new RTCPeerConnection(ICE_SERVERS);
         peerConnection.current = pc;
 
-        stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+        // Add all local tracks to peer connection
+        stream.getTracks().forEach((track) => {
+          track.enabled = true;
+          pc.addTrack(track, stream);
+        });
 
         pc.ontrack = (event) => {
-          if (remoteVideoRef.current && event.streams[0]) {
-            remoteVideoRef.current.srcObject = event.streams[0];
+          console.log("🔊 WebRTC Remote track received:", event.track.kind, event.streams);
+          const incomingStream = event.streams[0] || new MediaStream([event.track]);
+
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = incomingStream;
+            remoteVideoRef.current.play().catch((e) => console.log("remoteVideo.play() note:", e));
+          }
+          if (remoteAudioRef.current) {
+            remoteAudioRef.current.srcObject = incomingStream;
+            remoteAudioRef.current.play().catch((e) => console.log("remoteAudio.play() note:", e));
           }
         };
 
@@ -504,9 +517,13 @@ export default function VideoCall({
 
   // Toggle Remote Audio Speaker
   const toggleSpeaker = () => {
+    const newSpeakerMuted = !isSpeakerMuted;
+    setIsSpeakerMuted(newSpeakerMuted);
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.muted = newSpeakerMuted;
+    }
     if (remoteVideoRef.current) {
-      remoteVideoRef.current.muted = !remoteVideoRef.current.muted;
-      setIsSpeakerMuted(remoteVideoRef.current.muted);
+      remoteVideoRef.current.muted = newSpeakerMuted;
     }
   };
 
@@ -531,6 +548,14 @@ export default function VideoCall({
         userSelect: "none",
       }}
     >
+      {/* 🔊 Dedicated Persistent Audio Element for Voice and Video Calls */}
+      <audio
+        ref={remoteAudioRef}
+        autoPlay
+        playsInline
+        style={{ display: "none" }}
+      />
+
       {/* 1. TOP HEADER OVERLAY */}
       <Box
         sx={{
@@ -595,26 +620,17 @@ export default function VideoCall({
           position: "relative",
         }}
       >
-        {/* Remote Video Stream */}
-        {!isAudioCall && !peerVideoOff ? (
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-            }}
-          />
-        ) : null}
-
-        {/* Hidden Audio element for voice calls */}
+        {/* Remote Video Stream (Single Persistent Video Tag) */}
         <video
           ref={remoteVideoRef}
           autoPlay
           playsInline
-          style={{ display: isAudioCall || peerVideoOff ? "none" : "block", width: "100%", height: "100%", objectFit: "cover" }}
+          style={{
+            display: isAudioCall || peerVideoOff ? "none" : "block",
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+          }}
         />
 
         {/* Voice Call / Camera Off View (Avatar with concentric rings) */}

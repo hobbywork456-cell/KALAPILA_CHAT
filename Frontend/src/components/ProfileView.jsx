@@ -80,15 +80,15 @@ function ProfileView({ open, onClose, user }) {
         {/* --- DETAILS SECTIONS --- */}
         <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, p: 1 }}>
           
-          {/* Company ID Section */}
+          {/* Space / Room Section */}
           <Box sx={{ bgcolor: "#fff", p: 2.5, borderRadius: 2, mx: 1 }}>
             <Typography variant="caption" sx={{ fontWeight: "bold", color: "#1976d2", letterSpacing: 1 }}>
-              COMPANY NETWORK
+              SPACE / ROOM
             </Typography>
             <Box sx={{ display: "flex", alignItems: "center", mt: 1.5, gap: 2 }}>
               <BusinessIcon sx={{ color: "#90caf9" }} />
               <Typography variant="body1" sx={{ color: "#1a237e", fontWeight: 500 }}>
-                {user?.subscriptionId || "Private Group"}
+                {user?.spaceId || user?.subscriptionId || "Active Space"}
               </Typography>
             </Box>
           </Box>

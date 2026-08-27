@@ -13,7 +13,10 @@ import {
   AttachFile as AttachIcon,
   Phone as PhoneIcon,
   Videocam as VideocamIcon,
-  DoneAll as DoneAllIcon
+  DoneAll as DoneAllIcon,
+  Download as DownloadIcon,
+  OpenInNew as OpenInNewIcon,
+  ZoomIn as ZoomInIcon
 } from "@mui/icons-material";
 
 function Chat({
@@ -26,6 +29,7 @@ function Chat({
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduleDate, setScheduleDate] = useState("");
   const [editingId, setEditingId] = useState(null);
+  const [previewMedia, setPreviewMedia] = useState(null); // { url, type, name }
 
   const fileInputRef = useRef(null);
   const inputRef = useRef(null);
@@ -76,7 +80,6 @@ function Chat({
     };
 
     reader.readAsArrayBuffer(file);
-    // Reset file input value so same file can be re-uploaded if needed
     e.target.value = "";
   };
 
@@ -104,23 +107,70 @@ function Chat({
   const renderMessageContent = (msg) => {
     if (msg.fileType === "image") {
       return (
-        <Box sx={{ mt: 0.5, borderRadius: "12px", overflow: "hidden" }}>
+        <Box
+          onClick={() => setPreviewMedia({ url: msg.fileUrl, type: "image", name: "Image Preview" })}
+          sx={{
+            mt: 0.5,
+            borderRadius: "12px",
+            overflow: "hidden",
+            cursor: "pointer",
+            position: "relative",
+            "&:hover .zoom-overlay": { opacity: 1 },
+          }}
+        >
           <img
             src={msg.fileUrl}
             alt="media"
-            style={{ maxWidth: "100%", maxHeight: "320px", objectFit: "cover", display: "block", borderRadius: "10px" }}
+            style={{
+              maxWidth: "100%",
+              maxHeight: "320px",
+              objectFit: "cover",
+              display: "block",
+              borderRadius: "10px",
+              transition: "transform 0.2s ease"
+            }}
           />
+          <Box
+            className="zoom-overlay"
+            sx={{
+              position: "absolute",
+              inset: 0,
+              bgcolor: "rgba(0, 0, 0, 0.3)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              opacity: 0,
+              transition: "opacity 0.2s ease",
+              borderRadius: "10px"
+            }}
+          >
+            <ZoomInIcon sx={{ color: "#ffffff", fontSize: 28 }} />
+          </Box>
         </Box>
       );
     }
     if (msg.fileType === "video") {
       return (
-        <Box sx={{ mt: 0.5, borderRadius: "12px", overflow: "hidden" }}>
+        <Box sx={{ mt: 0.5, borderRadius: "12px", overflow: "hidden", position: "relative" }}>
           <video
             src={msg.fileUrl}
             controls
             style={{ maxWidth: "100%", maxHeight: "300px", display: "block", borderRadius: "10px" }}
           />
+          <Button
+            size="small"
+            onClick={() => setPreviewMedia({ url: msg.fileUrl, type: "video", name: "Video Player" })}
+            startIcon={<OpenInNewIcon sx={{ fontSize: "14px !important" }} />}
+            sx={{
+              mt: 0.5,
+              fontSize: "0.75rem",
+              textTransform: "none",
+              color: "#2563eb",
+              p: 0.3
+            }}
+          >
+            Expand Viewer
+          </Button>
         </Box>
       );
     }
@@ -662,6 +712,113 @@ function Chat({
           </IconButton>
         </Box>
       </Box>
+
+      {/* 🖼️ MEDIA POPUP / LIGHTBOX VIEWER */}
+      <Dialog
+        open={Boolean(previewMedia)}
+        onClose={() => setPreviewMedia(null)}
+        maxWidth="lg"
+        PaperProps={{
+          sx: {
+            bgcolor: "rgba(10, 15, 29, 0.95)",
+            backdropFilter: "blur(16px)",
+            borderRadius: "24px",
+            border: "1px solid rgba(255, 255, 255, 0.15)",
+            boxShadow: "0 25px 60px rgba(0, 0, 0, 0.6)",
+            color: "#ffffff",
+            overflow: "hidden",
+            m: { xs: 1, sm: 2 },
+            maxHeight: "92vh",
+            maxWidth: "92vw",
+            display: "flex",
+            flexDirection: "column",
+          }
+        }}
+      >
+        {/* Lightbox Header */}
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            p: { xs: 1.5, sm: 2 },
+            borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
+            bgcolor: "rgba(255, 255, 255, 0.03)"
+          }}
+        >
+          <Typography variant="subtitle1" fontWeight={700} sx={{ color: "#f8fafc" }}>
+            {previewMedia?.name || (previewMedia?.type === "image" ? "Image Viewer" : "Video Player")}
+          </Typography>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            {previewMedia?.url && (
+              <IconButton
+                component="a"
+                href={previewMedia.url}
+                download={previewMedia.type === "image" ? "image.jpg" : "video.mp4"}
+                target="_blank"
+                rel="noreferrer"
+                size="small"
+                sx={{
+                  color: "#94a3b8",
+                  bgcolor: "rgba(255, 255, 255, 0.08)",
+                  "&:hover": { color: "#ffffff", bgcolor: "rgba(255, 255, 255, 0.15)" }
+                }}
+              >
+                <DownloadIcon fontSize="small" />
+              </IconButton>
+            )}
+            <IconButton
+              size="small"
+              onClick={() => setPreviewMedia(null)}
+              sx={{
+                color: "#94a3b8",
+                bgcolor: "rgba(255, 255, 255, 0.08)",
+                "&:hover": { color: "#ffffff", bgcolor: "#ef4444" }
+              }}
+            >
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </Box>
+        </Box>
+
+        {/* Lightbox Content Body */}
+        <Box
+          sx={{
+            p: { xs: 1, sm: 3 },
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            overflow: "auto",
+            flex: 1
+          }}
+        >
+          {previewMedia?.type === "image" ? (
+            <img
+              src={previewMedia.url}
+              alt="fullscreen preview"
+              style={{
+                maxWidth: "100%",
+                maxHeight: "75vh",
+                objectFit: "contain",
+                borderRadius: "12px",
+                boxShadow: "0 10px 30px rgba(0,0,0,0.5)"
+              }}
+            />
+          ) : previewMedia?.type === "video" ? (
+            <video
+              src={previewMedia?.url}
+              controls
+              autoPlay
+              style={{
+                maxWidth: "100%",
+                maxHeight: "75vh",
+                borderRadius: "12px",
+                boxShadow: "0 10px 30px rgba(0,0,0,0.5)"
+              }}
+            />
+          ) : null}
+        </Box>
+      </Dialog>
     </Box>
   );
 }

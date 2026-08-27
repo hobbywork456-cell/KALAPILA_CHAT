@@ -21,7 +21,8 @@ const userSchema = new mongoose.Schema({
   },
   subscriptionId: { 
     type: String, 
-    required: true,
+    required: false,
+    default: "",
     index: true 
   }, 
   role: { 

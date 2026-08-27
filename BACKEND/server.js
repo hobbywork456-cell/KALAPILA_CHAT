@@ -8,6 +8,7 @@ const dns = require("dns");
 // Custom imports
 const authRoutes = require("./routes/authRoutes");
 const messageRoutes = require("./routes/messageRoute");
+const spaceRoutes = require("./routes/spaceRoutes");
 const socketLogic = require("./socket/socket"); 
 // 1. IMPORT THE SCHEDULER
 const initMessageScheduler = require("./middleware/scheduler"); 
@@ -81,6 +82,8 @@ mongoose.connect(process.env.MONGO_URI)
 // 🛣️ Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/message", messageRoutes);
+app.use("/api/spaces", spaceRoutes);
+
 
 // Health Check
 app.get("/", (req, res) => {
