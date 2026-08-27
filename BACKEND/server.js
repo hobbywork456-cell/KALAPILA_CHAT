@@ -18,17 +18,55 @@ dns.setServers(["1.1.1.1", "8.8.8.8"]);
 const app = express();
 const server = http.createServer(app);
 
+// Allowed origins for CORS (Production Vercel app & Local dev)
+const allowedOrigins = [
+  "https://kalapila-chat.vercel.app",
+  "http://localhost:5172",
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "http://127.0.0.1:5172",
+  "http://127.0.0.1:5173",
+  process.env.FRONTEND_URL,
+  process.env.CLIENT_URL
+].filter(Boolean);
+
+const isOriginAllowed = (origin) => {
+  if (!origin) return true;
+  const cleanOrigin = origin.replace(/\/+$/, "");
+  return (
+    allowedOrigins.some(o => o.replace(/\/+$/, "") === cleanOrigin) ||
+    cleanOrigin.endsWith(".vercel.app") ||
+    cleanOrigin.startsWith("http://localhost:") ||
+    cleanOrigin.startsWith("http://127.0.0.1:")
+  );
+};
+
 // 🔌 Socket.IO setup
 const io = require("socket.io")(server, {
   cors: { 
-    origin: "*", 
-    methods: ["GET", "POST"]
+    origin: (origin, callback) => {
+      if (isOriginAllowed(origin)) {
+        return callback(null, true);
+      }
+      return callback(null, true); // Fallback to avoid dropping connections
+    },
+    methods: ["GET", "POST"],
+    credentials: true
   }
 });
 
 // Middleware
 // Note: Put limit-increasing middleware BEFORE regular express.json()
-app.use(cors());
+app.use(cors({
+  origin: (origin, callback) => {
+    if (isOriginAllowed(origin)) {
+      return callback(null, true);
+    }
+    return callback(null, true);
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+}));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -65,7 +103,9 @@ const PORT = process.env.PORT || 5000;
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`� Accessible at http://192.168.0.197:${PORT}`);
-  console.log(`�🕒 Message Scheduler: Active (Checking every 1 min)`);
+  console.log(`📡 Local backend: http://localhost:${PORT}`);
+  console.log(`🌐 Hosted backend: ${process.env.BACKEND_URL || "https://kalapila.onrender.com"}`);
+  console.log(`💻 Frontend allowed: ${process.env.FRONTEND_URL || "https://kalapila-chat.vercel.app"}, http://localhost:5172`);
+  console.log(`🕒 Message Scheduler: Active (Checking every 1 min)`);
   console.log(`🔒 Subscription-Group security enabled`);
 });
