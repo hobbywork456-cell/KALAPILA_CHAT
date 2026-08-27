@@ -12,7 +12,7 @@ router.put("/edit/:id", async (req, res) => {
     const updatedMsg = await Message.findOneAndUpdate(
       { _id: req.params.id, sender: senderId }, 
       { message: message, isEdited: true },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!updatedMsg) {

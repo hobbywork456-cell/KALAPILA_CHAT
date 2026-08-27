@@ -76,7 +76,7 @@ const socketLogic = (io) => {
         const msg = await Message.findOneAndUpdate(
           { _id: messageId, sender: senderId },
           { message: newMessage, isEdited: true },
-          { new: true }
+          { returnDocument: 'after' }
         );
 
         if (msg) {

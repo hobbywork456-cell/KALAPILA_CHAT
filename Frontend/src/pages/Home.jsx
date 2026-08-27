@@ -21,24 +21,23 @@ export default function Home() {
   const navigate = useNavigate();
 
   // 1. Safe parsing of localStorage
-  const [currentUser, setCurrentUser] = useState(() => {
+  const [currentUser] = useState(() => {
     const saved = localStorage.getItem("user");
     return saved ? JSON.parse(saved) : null;
   });
 
   const [users, setUsers] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedUser, setSelectedUser] = useState(null);
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
   const [profileOpen, setProfileOpen] = useState(false);
   const [isMyProfileOpen, setIsMyProfileOpen] = useState(false);
 
-
   //------Call States-------
   const [calling, setCalling] = useState(false);
   const [incomingCall, setIncomingCall] = useState(null);
   const [callType, setCallType] = useState("video");
-
 
   const bottomRef = useRef(null);
   const timerRef = useRef(null);
@@ -217,67 +216,179 @@ export default function Home() {
     );
   }
 
+  const filteredUsers = users.filter((u) =>
+    u.name?.toLowerCase().includes(searchQuery.toLowerCase().trim()) ||
+    u.email?.toLowerCase().includes(searchQuery.toLowerCase().trim())
+  );
+
   return (
-    <Box sx={{ display: "flex", height: "100vh", width: "100vw", bgcolor: "#e3f2fd", overflow: "hidden", position: "fixed" }}>
+    <Box
+      sx={{
+        display: "flex",
+        height: { xs: "100dvh", md: "100vh" },
+        width: "100vw",
+        bgcolor: "#f0f4f8",
+        overflow: "hidden",
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0
+      }}
+    >
       <ToastContainer position="bottom-right" autoClose={3000} />
-      {/* SIDEBAR */}
-      <Box sx={{
-        width: { xs: selectedUser ? "0%" : "100%", md: "320px" },
-        display: { xs: selectedUser ? "none" : "flex", md: "flex" },
-        flexDirection: "column", bgcolor: "#ffffff", borderRight: "1px solid #bbdefb"
-      }}>
-        <AppBar position="static" sx={{ bgcolor: "#bbdefb", color: "#0d47a1", boxShadow: "none" }}>
-          <Toolbar variant="dense">
+
+      {/* 📱 SIDEBAR / CHATS LIST */}
+      <Box
+        sx={{
+          width: { xs: selectedUser ? "0%" : "100%", md: "340px", lg: "380px" },
+          display: { xs: selectedUser ? "none" : "flex", md: "flex" },
+          flexDirection: "column",
+          bgcolor: "#ffffff",
+          borderRight: "1px solid rgba(0, 0, 0, 0.08)",
+          height: "100%",
+          zIndex: 5
+        }}
+      >
+        {/* Top Header */}
+        <AppBar
+          position="static"
+          elevation={0}
+          sx={{
+            bgcolor: "#ffffff",
+            color: "#0f172a",
+            borderBottom: "1px solid rgba(0, 0, 0, 0.06)"
+          }}
+        >
+          <Toolbar sx={{ minHeight: { xs: 56, sm: 64 }, px: { xs: 1.5, sm: 2 } }}>
             <Avatar
               onClick={() => setIsMyProfileOpen(true)}
-              sx={{ width: 32, height: 32, bgcolor: "#1be122", mr: 1.5, cursor: 'pointer' }}
               src={currentUser?.profilePic || ""}
+              sx={{
+                width: 38,
+                height: 38,
+                bgcolor: "#2563eb",
+                mr: 1.5,
+                cursor: "pointer",
+                fontWeight: "bold",
+                boxShadow: "0 2px 8px rgba(37, 99, 235, 0.25)",
+                transition: "transform 0.2s",
+                "&:hover": { transform: "scale(1.05)" }
+              }}
             >
-              {currentUser?.name?.[0].toUpperCase()}
+              {currentUser?.name?.[0]?.toUpperCase()}
             </Avatar>
-            <Typography variant="subtitle1" fontWeight="bold">Chats</Typography>
-            <Typography variant="caption" sx={{ ml: "auto", opacity: 0.7 }}>
-              ID: {currentUser?.subscriptionId}
-            </Typography>
+            <Box sx={{ flexGrow: 1 }}>
+              <Typography variant="subtitle1" fontWeight={700} sx={{ color: "#0f172a", lineHeight: 1.2 }}>
+                Chats
+              </Typography>
+              <Typography variant="caption" sx={{ color: "#64748b", fontWeight: 500 }}>
+                {currentUser?.subscriptionId} Space
+              </Typography>
+            </Box>
           </Toolbar>
         </AppBar>
 
-        <Box sx={{ p: 2, bgcolor: "#f5f9ff" }}>
+        {/* Search Bar */}
+        <Box sx={{ p: 1.5, bgcolor: "#ffffff", borderBottom: "1px solid rgba(0,0,0,0.04)" }}>
           <TextField
-            fullWidth size="small" placeholder="Search colleagues..."
-            InputProps={{ startAdornment: <SearchIcon sx={{ color: "#90caf9", mr: 1 }} /> }}
-            sx={{ "& .MuiOutlinedInput-root": { borderRadius: 3, bgcolor: "#fff", fontSize: "0.85rem" } }}
+            fullWidth
+            size="small"
+            placeholder="Search colleagues..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            InputProps={{
+              startAdornment: <SearchIcon sx={{ color: "#94a3b8", mr: 1, fontSize: 20 }} />
+            }}
+            sx={{
+              "& .MuiOutlinedInput-root": {
+                borderRadius: "20px",
+                bgcolor: "#f1f5f9",
+                fontSize: "0.9rem",
+                "& fieldset": { borderColor: "transparent" },
+                "&:hover fieldset": { borderColor: "#cbd5e1" },
+                "&.Mui-focused fieldset": { borderColor: "#3b82f6" }
+              }
+            }}
           />
           <Profile open={isMyProfileOpen} onClose={() => setIsMyProfileOpen(false)} currentUser={currentUser} />
         </Box>
 
-        <List sx={{ flex: 1, overflowY: "auto", py: 0 }}>
-          {users.map((user) => (
-            <React.Fragment key={user._id}>
-              <ListItem disablePadding>
-                <ListItemButton
-                  onClick={() => setSelectedUser(user)}
-                  selected={selectedUser?._id === user._id}
-                  sx={{ "&.Mui-selected": { bgcolor: "#e3f2fd" } }}
-                >
-                  <ListItemAvatar>
-                    <Avatar src={user.profilePic} sx={{ bgcolor: "#64b5f6" }}>{user.name[0].toUpperCase()}</Avatar>
-                  </ListItemAvatar>
-                  <ListItemText
-                    primary={<Typography variant="body2" fontWeight={600} color="#1a237e">{user.name}</Typography>}
-                    secondary={<Typography variant="caption" color="textSecondary">Colleague</Typography>}
-                  />
-                </ListItemButton>
-              </ListItem>
-              <Divider sx={{ mx: 2, opacity: 0.5 }} />
-            </React.Fragment>
-          ))}
+        {/* Colleague Chat List */}
+        <List sx={{ flex: 1, overflowY: "auto", py: 0.5, WebkitOverflowScrolling: "touch" }}>
+          {filteredUsers.length === 0 ? (
+            <Box sx={{ p: 4, textAlign: "center", color: "#94a3b8" }}>
+              <Typography variant="body2">
+                {searchQuery ? "No colleagues found" : "No other colleagues in this space"}
+              </Typography>
+            </Box>
+          ) : (
+            filteredUsers.map((user) => {
+              const isSelected = selectedUser?._id === user._id;
+              return (
+                <React.Fragment key={user._id}>
+                  <ListItem disablePadding sx={{ px: 1, py: 0.3 }}>
+                    <ListItemButton
+                      onClick={() => setSelectedUser(user)}
+                      selected={isSelected}
+                      sx={{
+                        borderRadius: "12px",
+                        py: 1,
+                        px: 1.2,
+                        transition: "all 0.15s ease",
+                        "&.Mui-selected": {
+                          bgcolor: "#e0f2fe",
+                          "&:hover": { bgcolor: "#bae6fd" }
+                        },
+                        "&:hover": {
+                          bgcolor: "#f8fafc"
+                        }
+                      }}
+                    >
+                      <ListItemAvatar sx={{ minWidth: 48 }}>
+                        <Avatar
+                          src={user.profilePic}
+                          sx={{
+                            width: 42,
+                            height: 42,
+                            bgcolor: isSelected ? "#2563eb" : "#3b82f6",
+                            fontWeight: "bold",
+                            fontSize: "1rem"
+                          }}
+                        >
+                          {user.name?.[0]?.toUpperCase()}
+                        </Avatar>
+                      </ListItemAvatar>
+                      <ListItemText
+                        primary={
+                          <Typography
+                            variant="body2"
+                            fontWeight={isSelected ? 700 : 600}
+                            sx={{ color: isSelected ? "#0369a1" : "#1e293b", fontSize: "0.92rem" }}
+                            noWrap
+                          >
+                            {user.name}
+                          </Typography>
+                        }
+                        secondary={
+                          <Typography variant="caption" sx={{ color: "#64748b", fontSize: "0.78rem" }} noWrap>
+                            {user.role === "admin" ? "Admin" : "Colleague"}
+                          </Typography>
+                        }
+                      />
+                    </ListItemButton>
+                  </ListItem>
+                  <Divider sx={{ mx: 2, opacity: 0.3 }} />
+                </React.Fragment>
+              );
+            })
+          )}
         </List>
       </Box>
 
-      {/* CHAT AREA */}
+      {/* 💬 MAIN CHAT AREA */}
       {selectedUser ? (
-        <>
+        <Box sx={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
           <Chat
             selectedUser={selectedUser}
             setSelectedUser={setSelectedUser}
@@ -311,13 +422,50 @@ export default function Home() {
             callType={callType}
             setCallType={setCallType}
           />
-        </>
+        </Box>
       ) : (
-        <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", bgcolor: "#f0f7ff" }}>
-          <Box sx={{ opacity: 0.4, textAlign: "center" }}>
-            <ChatIcon sx={{ fontSize: 80, color: "#90caf9", mb: 2 }} />
-            <Typography variant="h6" color="#1976d2">Welcome to {currentUser?.subscriptionId} Space</Typography>
-            <Typography variant="body2" color="textSecondary">Select a colleague to start a chat</Typography>
+        <Box
+          sx={{
+            flex: 1,
+            display: { xs: "none", md: "flex" },
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            bgcolor: "#eef4f9",
+            p: 3
+          }}
+        >
+          <Box
+            sx={{
+              p: 4,
+              borderRadius: "24px",
+              bgcolor: "#ffffff",
+              boxShadow: "0 4px 20px rgba(0,0,0,0.04)",
+              textAlign: "center",
+              maxWidth: 380
+            }}
+          >
+            <Box
+              sx={{
+                width: 72,
+                height: 72,
+                borderRadius: "50%",
+                bgcolor: "#e0f2fe",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                mx: "auto",
+                mb: 2
+              }}
+            >
+              <ChatIcon sx={{ fontSize: 36, color: "#2563eb" }} />
+            </Box>
+            <Typography variant="h6" fontWeight={700} sx={{ color: "#0f172a", mb: 1 }}>
+              {currentUser?.subscriptionId} Space
+            </Typography>
+            <Typography variant="body2" sx={{ color: "#64748b", lineHeight: 1.5 }}>
+              Select a colleague from the sidebar to start instant messaging, calls, or sharing media.
+            </Typography>
           </Box>
         </Box>
       )}

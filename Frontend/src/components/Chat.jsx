@@ -1,8 +1,9 @@
 import React, { useState, useRef } from "react";
 import {
-  Box, Paper, TextField, IconButton, Typography,
+  Box, Paper, IconButton, Typography,
   AppBar, Toolbar, Avatar, Menu, MenuItem, Tooltip,
-  Dialog, DialogTitle, DialogContent, DialogActions, Button
+  Dialog, DialogTitle, DialogContent, DialogActions, Button,
+  InputBase, Badge
 } from "@mui/material";
 import {
   Send as SendIcon, ArrowBack as ArrowBackIcon,
@@ -11,14 +12,15 @@ import {
   Check as CheckIcon, Close as CloseIcon,
   AttachFile as AttachIcon,
   Phone as PhoneIcon,
-  Videocam as VideocamIcon
+  Videocam as VideocamIcon,
+  DoneAll as DoneAllIcon
 } from "@mui/icons-material";
+
 function Chat({
   selectedUser, setSelectedUser, messages, currentUser,
   message, setMessage, sendMessage, bottomRef, setProfileOpen,
   onEditMessage, onDeleteMessage, onScheduleMessage, onStartCall
 }) {
-
   const [anchorEl, setAnchorEl] = useState(null);
   const [activeMsg, setActiveMsg] = useState(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
@@ -26,11 +28,13 @@ function Chat({
   const [editingId, setEditingId] = useState(null);
 
   const fileInputRef = useRef(null);
+  const inputRef = useRef(null);
 
   if (!selectedUser) return null;
 
   // --- MENU HANDLERS ---
   const handleOpenMenu = (event, msg) => {
+    event.stopPropagation();
     setAnchorEl(event.currentTarget);
     setActiveMsg(msg);
   };
@@ -41,8 +45,13 @@ function Chat({
   };
 
   const startEditing = () => {
-    setEditingId(activeMsg._id);
-    setMessage(activeMsg.message);
+    if (activeMsg) {
+      setEditingId(activeMsg._id);
+      setMessage(activeMsg.message);
+      if (inputRef.current) {
+        inputRef.current.focus();
+      }
+    }
     handleCloseMenu();
   };
 
@@ -63,13 +72,14 @@ function Chat({
       if (file.type.startsWith("video")) type = "video";
       if (file.type.startsWith("audio")) type = "audio";
 
-      // ✅ SUCCESS: reader.result is now an ArrayBuffer.
-      // Socket.io will not crash because it knows exactly how to handle this.
       sendMessage(reader.result, type);
     };
 
     reader.readAsArrayBuffer(file);
+    // Reset file input value so same file can be re-uploaded if needed
+    e.target.value = "";
   };
+
   const handleScheduleSubmit = () => {
     if (!scheduleDate || !message.trim()) return;
     onScheduleMessage(message, scheduleDate);
@@ -78,85 +88,324 @@ function Chat({
     setMessage("");
   };
 
-  // Rendering Helper for different message types
-  const renderMessageContent = (msg) => {
-    if (msg.fileType === "image") return <img src={msg.fileUrl} alt="sent" style={{ maxWidth: '100%', borderRadius: '8px', marginTop: '5px' }} />;
-    if (msg.fileType === "video") return <video src={msg.fileUrl} controls style={{ maxWidth: '100%', borderRadius: '8px', marginTop: '5px' }} />;
-    if (msg.fileType === "audio") return <audio src={msg.fileUrl} controls style={{ maxWidth: '100%', marginTop: '5px' }} />;
-    return <Typography variant="body2" sx={{ pr: 2, whiteSpace: "pre-wrap" }}>{msg.message}</Typography>;
+  const handleSendOrSave = () => {
+    if (editingId) {
+      if (message.trim()) {
+        onEditMessage(editingId, message, setEditingId);
+      }
+    } else {
+      if (message.trim()) {
+        sendMessage();
+      }
+    }
   };
 
-  return (
-    <Box sx={{ flex: 1, display: "flex", flexDirection: "column", bgcolor: "#f0f2f5" }}>
-      {/* HEADER */}
-      <AppBar position="static" sx={{ bgcolor: "#ffffff", color: "#1a237e", boxShadow: "0 2px 4px rgba(0,0,0,0.05)" }}>
-        <Toolbar variant="dense">
-          <IconButton size="small" sx={{ display: { md: "none" }, mr: 1 }} onClick={() => setSelectedUser(null)}>
-            <ArrowBackIcon fontSize="small" />
-          </IconButton>
-          <Avatar
-            onClick={() => setProfileOpen(true)}
-            sx={{ width: 36, height: 36, mr: 1.5, cursor: "pointer" }}
-            src={selectedUser?.profilePic}
+  // Rendering Helper for different message types
+  const renderMessageContent = (msg) => {
+    if (msg.fileType === "image") {
+      return (
+        <Box sx={{ mt: 0.5, borderRadius: "12px", overflow: "hidden" }}>
+          <img
+            src={msg.fileUrl}
+            alt="media"
+            style={{ maxWidth: "100%", maxHeight: "320px", objectFit: "cover", display: "block", borderRadius: "10px" }}
           />
+        </Box>
+      );
+    }
+    if (msg.fileType === "video") {
+      return (
+        <Box sx={{ mt: 0.5, borderRadius: "12px", overflow: "hidden" }}>
+          <video
+            src={msg.fileUrl}
+            controls
+            style={{ maxWidth: "100%", maxHeight: "300px", display: "block", borderRadius: "10px" }}
+          />
+        </Box>
+      );
+    }
+    if (msg.fileType === "audio") {
+      return (
+        <Box sx={{ mt: 0.5, width: "100%", minWidth: { xs: "200px", sm: "240px" } }}>
+          <audio src={msg.fileUrl} controls style={{ width: "100%", height: "36px" }} />
+        </Box>
+      );
+    }
+    return (
+      <Typography
+        variant="body2"
+        sx={{
+          fontSize: { xs: "0.92rem", sm: "0.95rem" },
+          lineHeight: 1.45,
+          color: "#111827",
+          wordBreak: "break-word",
+          whiteSpace: "pre-wrap"
+        }}
+      >
+        {msg.message}
+      </Typography>
+    );
+  };
 
-          <Box sx={{ flexGrow: 1, cursor: "pointer" }} onClick={() => setProfileOpen(true)}>
-            <Typography variant="subtitle2" fontWeight="bold">{selectedUser?.name}</Typography>
-            <Typography variant="caption" color="success.main">online</Typography>
+  const hasContent = Boolean(message.trim()) || Boolean(editingId);
+
+  return (
+    <Box
+      sx={{
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        width: "100%",
+        bgcolor: "#e4ecf4",
+        position: "relative",
+        overflow: "hidden"
+      }}
+    >
+      {/* 🌟 TELEGRAM-STYLE TOP APPBAR */}
+      <AppBar
+        position="static"
+        elevation={0}
+        sx={{
+          bgcolor: "#ffffff",
+          color: "#1e293b",
+          borderBottom: "1px solid rgba(0, 0, 0, 0.08)",
+          zIndex: 10
+        }}
+      >
+        <Toolbar
+          sx={{
+            minHeight: { xs: "56px", sm: "64px" },
+            px: { xs: 1, sm: 2 },
+            gap: { xs: 0.5, sm: 1 }
+          }}
+        >
+          {/* Back button for mobile */}
+          <IconButton
+            size="medium"
+            onClick={() => setSelectedUser(null)}
+            sx={{
+              display: { md: "none" },
+              color: "#3b82f6",
+              p: 0.8,
+              mr: 0.2
+            }}
+          >
+            <ArrowBackIcon />
+          </IconButton>
+
+          {/* User Avatar with Online Badge */}
+          <Badge
+            overlap="circular"
+            anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+            variant="dot"
+            sx={{
+              "& .MuiBadge-badge": {
+                bgcolor: "#22c55e",
+                color: "#22c55e",
+                boxShadow: "0 0 0 2px #fff",
+                width: 10,
+                height: 10,
+                borderRadius: "50%"
+              }
+            }}
+          >
+            <Avatar
+              onClick={() => setProfileOpen(true)}
+              src={selectedUser?.profilePic}
+              sx={{
+                width: { xs: 38, sm: 42 },
+                height: { xs: 38, sm: 42 },
+                bgcolor: "#2563eb",
+                fontWeight: "bold",
+                fontSize: "1rem",
+                cursor: "pointer",
+                boxShadow: "0 2px 6px rgba(37, 99, 235, 0.25)"
+              }}
+            >
+              {selectedUser?.name?.[0]?.toUpperCase()}
+            </Avatar>
+          </Badge>
+
+          {/* User Name & Status */}
+          <Box
+            sx={{
+              flexGrow: 1,
+              cursor: "pointer",
+              ml: 1,
+              overflow: "hidden"
+            }}
+            onClick={() => setProfileOpen(true)}
+          >
+            <Typography
+              variant="subtitle1"
+              fontWeight={700}
+              noWrap
+              sx={{
+                fontSize: { xs: "0.95rem", sm: "1.05rem" },
+                color: "#0f172a",
+                lineHeight: 1.2
+              }}
+            >
+              {selectedUser?.name}
+            </Typography>
+            <Typography
+              variant="caption"
+              sx={{
+                fontSize: { xs: "0.72rem", sm: "0.78rem" },
+                color: "#2563eb",
+                fontWeight: 500,
+                display: "block"
+              }}
+            >
+              online
+            </Typography>
           </Box>
 
-          <Box sx={{ display: "flex", gap: 0.5 }}>
-            <IconButton
-              onClick={(e) => {
-                e.stopPropagation();
-                onStartCall("audio");
-              }}
-              color="primary"
-              aria-label="start audio call"
-            >
-              <PhoneIcon />
-            </IconButton>
-            <IconButton
-              onClick={(e) => {
-                e.stopPropagation();
-                onStartCall("video");
-              }}
-              color="primary"
-              aria-label="start video call"
-            >
-              <VideocamIcon />
-            </IconButton>
+          {/* Call & Video Call Action Buttons */}
+          <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 0.2, sm: 0.8 } }}>
+            <Tooltip title="Voice Call">
+              <IconButton
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onStartCall("audio");
+                }}
+                sx={{
+                  color: "#2563eb",
+                  bgcolor: "rgba(37, 99, 235, 0.08)",
+                  p: { xs: 0.9, sm: 1.1 },
+                  "&:hover": { bgcolor: "rgba(37, 99, 235, 0.15)" }
+                }}
+                aria-label="start audio call"
+              >
+                <PhoneIcon sx={{ fontSize: { xs: 20, sm: 22 } }} />
+              </IconButton>
+            </Tooltip>
+
+            <Tooltip title="Video Call">
+              <IconButton
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onStartCall("video");
+                }}
+                sx={{
+                  color: "#2563eb",
+                  bgcolor: "rgba(37, 99, 235, 0.08)",
+                  p: { xs: 0.9, sm: 1.1 },
+                  "&:hover": { bgcolor: "rgba(37, 99, 235, 0.15)" }
+                }}
+                aria-label="start video call"
+              >
+                <VideocamIcon sx={{ fontSize: { xs: 20, sm: 22 } }} />
+              </IconButton>
+            </Tooltip>
           </Box>
         </Toolbar>
       </AppBar>
 
-      {/* MESSAGES LIST */}
-      <Box sx={{ flex: 1, p: 2, overflowY: "auto", display: "flex", flexDirection: "column", backgroundImage: `url('https://www.transparenttextures.com/patterns/cubes.png')` }}>
+      {/* 💬 TELEGRAM-STYLE MESSAGE LIST */}
+      <Box
+        sx={{
+          flex: 1,
+          p: { xs: 1.5, sm: 2.5 },
+          overflowY: "auto",
+          WebkitOverflowScrolling: "touch",
+          display: "flex",
+          flexDirection: "column",
+          gap: 1,
+          backgroundImage: `radial-gradient(#c5d8ea 1px, transparent 1px), radial-gradient(#c5d8ea 1px, #e4ecf4 1px)`,
+          backgroundSize: "24px 24px",
+          backgroundPosition: "0 0, 12px 12px"
+        }}
+      >
         {messages.map((msg, i) => {
-          const isMe = msg.sender?._id?.toString() === currentUser?._id?.toString() || msg.sender?.toString() === currentUser?._id?.toString();
+          const isMe =
+            msg.sender?._id?.toString() === currentUser?._id?.toString() ||
+            msg.sender?.toString() === currentUser?._id?.toString();
+
           return (
-            <Box key={msg._id || i} sx={{ alignSelf: isMe ? "flex-end" : "flex-start", mb: 1, maxWidth: "75%" }}>
-              <Paper elevation={0} sx={{
-                p: "6px 10px",
-                bgcolor: isMe ? "#dcf8c6" : "#ffffff",
-                borderRadius: isMe ? "10px 0px 10px 10px" : "0px 10px 10px 10px",
-                boxShadow: "0 1px 1px rgba(0,0,0,0.1)",
+            <Box
+              key={msg._id || i}
+              sx={{
+                alignSelf: isMe ? "flex-end" : "flex-start",
+                maxWidth: { xs: "86%", sm: "75%", md: "65%" },
                 position: "relative",
-                "&:hover .msg-actions": { opacity: 1 }
-              }}>
-                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  {renderMessageContent(msg)}
+                transition: "all 0.15s ease"
+              }}
+            >
+              <Paper
+                elevation={0}
+                sx={{
+                  p: { xs: "8px 12px", sm: "9px 14px" },
+                  bgcolor: isMe ? "#e1ffc7" : "#ffffff",
+                  color: "#1e293b",
+                  borderRadius: isMe
+                    ? "16px 16px 4px 16px"
+                    : "16px 16px 16px 4px",
+                  boxShadow: isMe
+                    ? "0 1px 2px rgba(0, 128, 0, 0.12)"
+                    : "0 1px 2px rgba(0, 0, 0, 0.08)",
+                  position: "relative",
+                  "&:hover .msg-actions": { opacity: 1 }
+                }}
+              >
+                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 1 }}>
+                  <Box sx={{ flex: 1 }}>{renderMessageContent(msg)}</Box>
                   {isMe && (
-                    <IconButton className="msg-actions" size="small" onClick={(e) => handleOpenMenu(e, msg)} sx={{ opacity: 0, transition: "0.2s", p: 0 }}>
+                    <IconButton
+                      className="msg-actions"
+                      size="small"
+                      onClick={(e) => handleOpenMenu(e, msg)}
+                      sx={{
+                        opacity: { xs: 0.6, sm: 0 },
+                        transition: "0.2s",
+                        p: 0.2,
+                        ml: 0.5,
+                        color: "#64748b",
+                        "&:hover": { color: "#0f172a" }
+                      }}
+                    >
                       <MoreVertIcon sx={{ fontSize: 16 }} />
                     </IconButton>
                   )}
                 </Box>
-                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "flex-end", mt: 0.2, gap: 0.5 }}>
-                  {msg.isEdited && <Typography sx={{ fontSize: "0.6rem", fontStyle: "italic", opacity: 0.5 }}>edited</Typography>}
-                  <Typography variant="caption" sx={{ fontSize: "0.6rem", opacity: 0.5 }}>
-                    {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+
+                {/* Timestamp & Status */}
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "flex-end",
+                    mt: 0.4,
+                    gap: 0.4
+                  }}
+                >
+                  {msg.isEdited && (
+                    <Typography sx={{ fontSize: "0.65rem", fontStyle: "italic", color: "#64748b" }}>
+                      edited
+                    </Typography>
+                  )}
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontSize: "0.68rem",
+                      color: "#64748b",
+                      fontWeight: 500
+                    }}
+                  >
+                    {new Date(msg.createdAt || Date.now()).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit"
+                    })}
                   </Typography>
+                  {isMe && (
+                    <DoneAllIcon
+                      sx={{
+                        fontSize: 14,
+                        color: "#3b82f6"
+                      }}
+                    />
+                  )}
                 </Box>
               </Paper>
             </Box>
@@ -165,72 +414,251 @@ function Chat({
         <div ref={bottomRef} />
       </Box>
 
-      {/* MENU & DIALOGS */}
-      <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleCloseMenu}>
-        <MenuItem onClick={startEditing} sx={{ fontSize: "0.85rem" }}>
-          <EditIcon sx={{ fontSize: 16, mr: 1 }} /> Edit
+      {/* --- MENU & SCHEDULE DIALOG --- */}
+      <Menu
+        anchorEl={anchorEl}
+        open={Boolean(anchorEl)}
+        onClose={handleCloseMenu}
+        PaperProps={{
+          elevation: 4,
+          sx: {
+            borderRadius: "12px",
+            minWidth: 140,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.12)"
+          }
+        }}
+      >
+        <MenuItem onClick={startEditing} sx={{ fontSize: "0.88rem", py: 1 }}>
+          <EditIcon sx={{ fontSize: 18, mr: 1.5, color: "#2563eb" }} /> Edit
         </MenuItem>
-        <MenuItem onClick={() => { onDeleteMessage(activeMsg?._id); handleCloseMenu(); }} sx={{ fontSize: "0.85rem", color: "error.main" }}>
-          <DeleteIcon sx={{ fontSize: 16, mr: 1 }} /> Delete
+        <MenuItem
+          onClick={() => {
+            onDeleteMessage(activeMsg?._id);
+            handleCloseMenu();
+          }}
+          sx={{ fontSize: "0.88rem", py: 1, color: "#ef4444" }}
+        >
+          <DeleteIcon sx={{ fontSize: 18, mr: 1.5 }} /> Delete
         </MenuItem>
       </Menu>
 
-      <Dialog open={scheduleOpen} onClose={() => setScheduleOpen(false)}>
-        <DialogTitle sx={{ fontSize: "1rem" }}>Schedule Message</DialogTitle>
+      <Dialog
+        open={scheduleOpen}
+        onClose={() => setScheduleOpen(false)}
+        PaperProps={{ sx: { borderRadius: "16px", p: 1 } }}
+      >
+        <DialogTitle sx={{ fontSize: "1.1rem", fontWeight: 700, pb: 1 }}>
+          📅 Schedule Message
+        </DialogTitle>
         <DialogContent>
-          <TextField autoFocus type="datetime-local" fullWidth variant="standard" value={scheduleDate} onChange={(e) => setScheduleDate(e.target.value)} InputLabelProps={{ shrink: true }} />
+          <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+            Choose a date and time to automatically send this message.
+          </Typography>
+          <InputBase
+            autoFocus
+            type="datetime-local"
+            fullWidth
+            value={scheduleDate}
+            onChange={(e) => setScheduleDate(e.target.value)}
+            sx={{
+              p: 1.2,
+              borderRadius: "10px",
+              border: "1px solid #cbd5e1",
+              bgcolor: "#f8fafc",
+              fontSize: "0.95rem"
+            }}
+          />
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setScheduleOpen(false)} size="small">Cancel</Button>
-          <Button onClick={handleScheduleSubmit} variant="contained" size="small" disabled={!scheduleDate || !message.trim()}>Schedule</Button>
+        <DialogActions sx={{ px: 2, pb: 1.5 }}>
+          <Button onClick={() => setScheduleOpen(false)} sx={{ textTransform: "none", color: "#64748b" }}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleScheduleSubmit}
+            variant="contained"
+            disabled={!scheduleDate || !message.trim()}
+            sx={{
+              textTransform: "none",
+              borderRadius: "8px",
+              bgcolor: "#2563eb",
+              "&:hover": { bgcolor: "#1d4ed8" }
+            }}
+          >
+            Schedule
+          </Button>
         </DialogActions>
       </Dialog>
 
-      {/* INPUT AREA */}
-      <Box sx={{ p: 1.5, bgcolor: "#f0f2f5", display: "flex", flexDirection: "column", gap: 1 }}>
+      {/* 🚀 TELEGRAM-STYLE MOBILE INPUT BAR */}
+      <Box
+        sx={{
+          p: { xs: "8px 10px", sm: "10px 16px" },
+          pb: { xs: "max(10px, env(safe-area-inset-bottom))", sm: "12px" },
+          bgcolor: "transparent",
+          display: "flex",
+          flexDirection: "column",
+          gap: 0.8,
+          zIndex: 10
+        }}
+      >
+        {/* Editing indicator */}
         {editingId && (
-          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", bgcolor: "#e3f2fd", p: 1, borderRadius: 2 }}>
-            <Typography variant="caption" color="primary">Editing message...</Typography>
-            <IconButton size="small" onClick={cancelEdit}><CloseIcon sx={{ fontSize: 14 }} /></IconButton>
-          </Box>
-        )}
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          <input type="file" accept="image/*,video/*,audio/*" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileUpload} />
-
-          <IconButton size="small" onClick={() => fileInputRef.current.click()} sx={{ color: "#54656f" }}>
-            <AttachIcon />
-          </IconButton>
-
-          <Tooltip title="Schedule Message">
-            <IconButton size="small" onClick={() => setScheduleOpen(true)} sx={{ color: "#54656f" }}>
-              <ScheduleIcon />
-            </IconButton>
-          </Tooltip>
-
-          <TextField
-            fullWidth placeholder="Type a message..." variant="outlined" size="small" multiline maxRows={4} value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                if (message.trim()) {
-                  editingId ? onEditMessage(editingId, message, setEditingId) : sendMessage();
-                }
-              }
-            }}
-            sx={{ bgcolor: "#ffffff", "& .MuiOutlinedInput-root": { borderRadius: 3, fontSize: "0.9rem" } }}
-          />
-
-          <IconButton
-            disabled={!message.trim() && !editingId}
-            onClick={editingId ? () => onEditMessage(editingId, message, setEditingId) : sendMessage}
+          <Box
             sx={{
-              bgcolor: (message.trim() || editingId) ? "#00a884" : "transparent",
-              color: (message.trim() || editingId) ? "#fff" : "#54656f",
-              "&:hover": { bgcolor: "#008f72" }
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              bgcolor: "#e0f2fe",
+              p: "6px 14px",
+              borderRadius: "16px",
+              border: "1px solid #bae6fd",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
             }}
           >
-            {editingId ? <CheckIcon fontSize="small" /> : <SendIcon fontSize="small" />}
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <EditIcon sx={{ fontSize: 16, color: "#0284c7" }} />
+              <Typography variant="caption" sx={{ fontWeight: 600, color: "#0284c7" }}>
+                Editing Message
+              </Typography>
+            </Box>
+            <IconButton size="small" onClick={cancelEdit} sx={{ color: "#0284c7", p: 0.2 }}>
+              <CloseIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Box>
+        )}
+
+        {/* Input Pill & Floating Circular Send Button */}
+        <Box sx={{ display: "flex", alignItems: "flex-end", gap: { xs: 0.8, sm: 1.2 } }}>
+          <input
+            type="file"
+            accept="image/*,video/*,audio/*"
+            ref={fileInputRef}
+            style={{ display: "none" }}
+            onChange={handleFileUpload}
+          />
+
+          {/* Telegram-style Capsule Pill */}
+          <Paper
+            elevation={0}
+            sx={{
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              bgcolor: "#ffffff",
+              borderRadius: "26px",
+              p: "4px 8px",
+              minHeight: { xs: "46px", sm: "50px" },
+              boxShadow: "0 2px 6px rgba(0, 0, 0, 0.08)",
+              border: "1px solid rgba(0, 0, 0, 0.05)",
+              transition: "box-shadow 0.2s ease, border-color 0.2s ease",
+              "&:focus-within": {
+                boxShadow: "0 3px 12px rgba(37, 99, 235, 0.15)",
+                borderColor: "#93c5fd"
+              }
+            }}
+          >
+            {/* Attachment Button */}
+            <Tooltip title="Attach Media">
+              <IconButton
+                size="small"
+                onClick={() => fileInputRef.current?.click()}
+                sx={{
+                  color: "#64748b",
+                  p: { xs: 0.8, sm: 1 },
+                  "&:hover": { color: "#2563eb", bgcolor: "rgba(37, 99, 235, 0.08)" }
+                }}
+              >
+                <AttachIcon sx={{ fontSize: { xs: 22, sm: 24 }, transform: "rotate(45deg)" }} />
+              </IconButton>
+            </Tooltip>
+
+            {/* Message Input Field */}
+            <InputBase
+              inputRef={inputRef}
+              fullWidth
+              placeholder="Message"
+              multiline
+              maxRows={4}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendOrSave();
+                }
+              }}
+              sx={{
+                px: 1,
+                fontSize: { xs: "0.95rem", sm: "1rem" },
+                color: "#0f172a",
+                lineHeight: 1.4,
+                "& input::placeholder, & textarea::placeholder": {
+                  color: "#94a3b8",
+                  opacity: 1
+                }
+              }}
+            />
+
+            {/* Schedule Message Button */}
+            <Tooltip title="Schedule Send">
+              <IconButton
+                size="small"
+                onClick={() => setScheduleOpen(true)}
+                sx={{
+                  color: "#64748b",
+                  p: { xs: 0.8, sm: 1 },
+                  "&:hover": { color: "#2563eb", bgcolor: "rgba(37, 99, 235, 0.08)" }
+                }}
+              >
+                <ScheduleIcon sx={{ fontSize: { xs: 20, sm: 22 } }} />
+              </IconButton>
+            </Tooltip>
+          </Paper>
+
+          {/* 🌟 Telegram Floating Circular Send Action Button */}
+          <IconButton
+            onClick={handleSendOrSave}
+            disabled={!hasContent}
+            sx={{
+              width: { xs: 46, sm: 50 },
+              height: { xs: 46, sm: 50 },
+              minWidth: { xs: 46, sm: 50 },
+              borderRadius: "50%",
+              bgcolor: editingId
+                ? "#22c55e"
+                : hasContent
+                ? "#2481cc"
+                : "#94a3b8",
+              color: "#ffffff",
+              boxShadow: hasContent
+                ? editingId
+                  ? "0 3px 10px rgba(34, 197, 94, 0.4)"
+                  : "0 3px 10px rgba(36, 129, 204, 0.4)"
+                : "none",
+              transition: "transform 0.15s ease, background-color 0.2s ease, box-shadow 0.2s ease",
+              "&:hover": {
+                bgcolor: editingId ? "#16a34a" : "#1d71b8",
+                transform: "scale(1.05)"
+              },
+              "&:active": {
+                transform: "scale(0.95)"
+              },
+              "&.Mui-disabled": {
+                bgcolor: "#cbd5e1",
+                color: "#ffffff"
+              }
+            }}
+          >
+            {editingId ? (
+              <CheckIcon sx={{ fontSize: { xs: 22, sm: 24 } }} />
+            ) : (
+              <SendIcon
+                sx={{
+                  fontSize: { xs: 20, sm: 22 },
+                  ml: "2px"
+                }}
+              />
+            )}
           </IconButton>
         </Box>
       </Box>
@@ -238,5 +666,4 @@ function Chat({
   );
 }
 
-// --- THIS IS THE CRITICAL LINE FOR OPTION 1 ---
-export default Chat;
+export default Chat;
