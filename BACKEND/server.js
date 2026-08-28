@@ -19,9 +19,10 @@ dns.setServers(["1.1.1.1", "8.8.8.8"]);
 const app = express();
 const server = http.createServer(app);
 
-// Allowed origins for CORS (Production Vercel app & Local dev)
+// Allowed origins for CORS (Production Vercel app, Local dev, Network IPs)
 const allowedOrigins = [
   "https://kalapila-chat.vercel.app",
+  "https://kalapila.onrender.com",
   "http://localhost:5172",
   "http://localhost:5173",
   "http://localhost:3000",
@@ -32,37 +33,37 @@ const allowedOrigins = [
 ].filter(Boolean);
 
 const isOriginAllowed = (origin) => {
-  if (!origin) return true;
+  if (!origin) return true; // Allow mobile apps, curl, server-to-server
   const cleanOrigin = origin.replace(/\/+$/, "");
   return (
     allowedOrigins.some(o => o.replace(/\/+$/, "") === cleanOrigin) ||
     cleanOrigin.endsWith(".vercel.app") ||
+    cleanOrigin.endsWith(".onrender.com") ||
     cleanOrigin.startsWith("http://localhost:") ||
-    cleanOrigin.startsWith("http://127.0.0.1:")
+    cleanOrigin.startsWith("http://127.0.0.1:") ||
+    cleanOrigin.startsWith("http://192.168.")
   );
 };
 
-// 🔌 Socket.IO setup
+// 🔌 Socket.IO setup with polling first for cloud compatibility & max connection durability
 const io = require("socket.io")(server, {
   cors: { 
     origin: (origin, callback) => {
-      if (isOriginAllowed(origin)) {
-        return callback(null, true);
-      }
-      return callback(null, true); // Fallback to avoid dropping connections
+      // Always allow valid web origins without dropping
+      return callback(null, true);
     },
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     credentials: true
-  }
+  },
+  transports: ["polling", "websocket"],
+  pingTimeout: 30000,
+  pingInterval: 15000,
+  allowEIO3: true
 });
 
 // Middleware
-// Note: Put limit-increasing middleware BEFORE regular express.json()
 app.use(cors({
   origin: (origin, callback) => {
-    if (isOriginAllowed(origin)) {
-      return callback(null, true);
-    }
     return callback(null, true);
   },
   credentials: true,

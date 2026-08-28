@@ -130,6 +130,14 @@ function Auth() {
           zIndex: 2,
         }}
       >
+        <Box sx={{ display: "flex", justifyContent: "center", mb: 2 }}>
+          <img
+            src="/favicon.svg"
+            alt="Kalapila Logo"
+            style={{ width: 68, height: 68, filter: "drop-shadow(0 8px 20px rgba(37, 99, 235, 0.4))" }}
+          />
+        </Box>
+
         <Typography
           variant="h4"
           sx={{

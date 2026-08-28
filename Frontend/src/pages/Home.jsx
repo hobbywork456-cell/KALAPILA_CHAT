@@ -278,9 +278,21 @@ export default function Home() {
 
   // Socket: Join and Listen for Updates
   useEffect(() => {
-    if (!socket || !currentUser) return;
+    if (!socket || !currentUser?._id) return;
 
-    socket.emit("join", currentUser._id);
+    const joinRoom = () => {
+      socket.emit("join", currentUser._id);
+    };
+
+    if (socket.connected) {
+      joinRoom();
+    } else {
+      socket.connect();
+    }
+
+    const onConnect = () => {
+      joinRoom();
+    };
 
     const onMessageUpdated = (updatedMsg) => {
       setMessages((prev) => prev.map((m) => (m._id === updatedMsg._id ? updatedMsg : m)));
@@ -352,6 +364,7 @@ export default function Home() {
       });
     };
 
+    socket.on("connect", onConnect);
     socket.on("messageUpdated", onMessageUpdated);
     socket.on("messageDeleted", onMessageDeleted);
     socket.on("incoming-call", onIncomingCall);
@@ -360,6 +373,7 @@ export default function Home() {
     socket.on("messageScheduled", onMessageScheduled);
 
     return () => {
+      socket.off("connect", onConnect);
       socket.off("messageUpdated", onMessageUpdated);
       socket.off("messageDeleted", onMessageDeleted);
       socket.off("incoming-call", onIncomingCall);
@@ -371,13 +385,11 @@ export default function Home() {
 
   // Fetch Message History when user is selected
   useEffect(() => {
-    if (!selectedUser || !currentUser) return;
+    if (!selectedUser?._id || !currentUser?._id) return;
 
-    socket.emit("getMessages", { senderId: currentUser._id, receiverId: selectedUser._id });
-
-    socket.on("messageHistory", (msgs) => {
-      setMessages(msgs);
-      if (msgs.length > 0) {
+    const handleMessageHistory = (msgs) => {
+      setMessages(Array.isArray(msgs) ? msgs : []);
+      if (Array.isArray(msgs) && msgs.length > 0) {
         const last = msgs[msgs.length - 1];
         setLastMessageMap((prev) => ({
           ...prev,
@@ -388,10 +400,13 @@ export default function Home() {
           },
         }));
       }
-    });
+    };
+
+    socket.on("messageHistory", handleMessageHistory);
+    socket.emit("getMessages", { senderId: currentUser._id, receiverId: selectedUser._id });
 
     return () => {
-      socket.off("messageHistory");
+      socket.off("messageHistory", handleMessageHistory);
     };
   }, [selectedUser, currentUser]);
 
@@ -506,19 +521,19 @@ export default function Home() {
         {/* App Brand Icon */}
         <Tooltip title="Kalapila" placement="right">
           <Avatar
+            src="/favicon.svg"
+            alt="Kalapila"
             sx={{
               width: 44,
               height: 44,
-              bgcolor: "#2563eb",
-              fontWeight: 900,
-              fontSize: "1.1rem",
+              bgcolor: "transparent",
               mb: 2,
               boxShadow: "0 4px 14px rgba(37, 99, 235, 0.4)",
               cursor: "pointer",
+              transition: "transform 0.2s ease",
+              "&:hover": { transform: "scale(1.08)" },
             }}
-          >
-            KP
-          </Avatar>
+          />
         </Tooltip>
 
         <Divider sx={{ width: "60%", borderColor: "rgba(255, 255, 255, 0.15)", mb: 2 }} />
