@@ -37,9 +37,12 @@ const emitJoinIfUserPresent = () => {
     const saved = localStorage.getItem("user");
     if (saved) {
       const user = JSON.parse(saved);
-      if (user?._id) {
-        socket.emit("join", user._id);
-        console.log(`🔌 [Socket.io]: Connected & auto-joined as user ${user._id}`);
+      if (user?._id || user?.email) {
+        socket.emit("join", {
+          userId: user._id,
+          email: user.email,
+        });
+        console.log(`🔌 [Socket.io]: Connected & auto-joined as ${user.email || user._id}`);
       }
     }
   } catch (err) {

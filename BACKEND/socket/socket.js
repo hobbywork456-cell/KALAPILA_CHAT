@@ -12,21 +12,51 @@ const socketLogic = (io) => {
     callLogic(socket, io, users);
 
     // Helper to register user
-    const registerUser = (userId) => {
-      if (!userId) return;
-      const normalizedId = userId.toString();
-      users[normalizedId] = socket.id;
-      socket.data.userId = normalizedId;
-      socket.join(normalizedId); // Join private room for this user
-      console.log(`👤 User ${normalizedId} associated with socket ${socket.id}`);
-      console.log("Current user map:", users);
-      socket.emit("joined", { userId: normalizedId, socketId: socket.id });
-      io.emit("presence-update", { userId: normalizedId, socketId: socket.id, online: true });
+    const registerUser = async (data) => {
+      if (!data) return;
+      let userId = typeof data === "object" ? data.userId : data;
+      let email = typeof data === "object" ? data.email : null;
+
+      if (!userId && !email) return;
+
+      if (userId) {
+        const normalizedId = userId.toString();
+        users[normalizedId] = socket.id;
+        socket.data.userId = normalizedId;
+        socket.join(normalizedId);
+        console.log(`👤 User ID ${normalizedId} associated with socket ${socket.id}`);
+      }
+
+      if (email) {
+        const normalizedEmail = email.trim().toLowerCase();
+        users[normalizedEmail] = socket.id;
+        socket.data.email = normalizedEmail;
+        socket.join(normalizedEmail);
+        console.log(`📧 User Email ${normalizedEmail} associated with socket ${socket.id}`);
+      } else if (userId && !email) {
+        // Asynchronously fetch email to also map email -> socket
+        try {
+          const userDoc = await User.findById(userId).select("email");
+          if (userDoc?.email) {
+            const userEmail = userDoc.email.trim().toLowerCase();
+            users[userEmail] = socket.id;
+            socket.data.email = userEmail;
+            socket.join(userEmail);
+            console.log(`📧 [Auto-linked] ${userEmail} -> socket ${socket.id}`);
+          }
+        } catch (e) {
+          // Ignore DB lookup error if userId is not an ObjectId
+        }
+      }
+
+      const primaryId = userId ? userId.toString() : email;
+      socket.emit("joined", { userId: primaryId, socketId: socket.id });
+      io.emit("presence-update", { userId: primaryId, socketId: socket.id, online: true });
     };
 
     // 1. JOIN (Store user mapping & join user room)
-    socket.on("join", (userId) => {
-      registerUser(userId);
+    socket.on("join", (data) => {
+      registerUser(data);
     });
 
     socket.on("get-online-users", () => {
@@ -199,13 +229,16 @@ const socketLogic = (io) => {
 
     // 6. DISCONNECT (Cleanup)
     socket.on("disconnect", (reason) => {
-      for (const userId in users) {
-        if (users[userId] === socket.id) {
-          console.log(`🔴 User ${userId} disconnected (${reason})`);
-          delete users[userId];
-          io.emit("presence-update", { userId, socketId: socket.id, online: false });
-          break;
+      let notifiedUserId = null;
+      for (const key in users) {
+        if (users[key] === socket.id) {
+          console.log(`🔴 User/Email ${key} disconnected (${reason})`);
+          delete users[key];
+          if (!notifiedUserId) notifiedUserId = key;
         }
+      }
+      if (notifiedUserId) {
+        io.emit("presence-update", { userId: notifiedUserId, socketId: socket.id, online: false });
       }
     });
   });

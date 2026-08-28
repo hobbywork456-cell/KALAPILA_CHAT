@@ -24,11 +24,27 @@ export default function CallHandler({
   currentUser,
   selectedUser,
   setSelectedUser,
-  users,
+  users = [],
   callType,
   setCallType,
 }) {
   const [activeIncomingCallData, setActiveIncomingCallData] = useState(null);
+  const [bufferedCandidates, setBufferedCandidates] = useState([]);
+
+  // Buffer ICE candidates arriving before the user clicks 'Accept'
+  useEffect(() => {
+    const handleIncomingCandidate = ({ candidate }) => {
+      if (candidate && incomingCall) {
+        console.log("📥 [CallHandler] Buffered incoming ICE candidate during ringing");
+        setBufferedCandidates((prev) => [...prev, candidate]);
+      }
+    };
+
+    socket.on("ice-candidate", handleIncomingCandidate);
+    return () => {
+      socket.off("ice-candidate", handleIncomingCandidate);
+    };
+  }, [incomingCall]);
 
   // Play incoming ringtone when incomingCall arrives
   useEffect(() => {
@@ -51,7 +67,10 @@ export default function CallHandler({
 
     // Match or create partner user object
     const caller = users.find(
-      (u) => u._id === callerData?.from || u._id === callerData?._id || u.email === callerData?.email
+      (u) =>
+        (callerData?.from && u._id === callerData.from) ||
+        (callerData?._id && u._id === callerData._id) ||
+        (callerData?.email && u.email?.toLowerCase() === callerData.email.toLowerCase())
     ) || {
       _id: callerData?.from || callerData?._id,
       name: callerData?.name || "Kalapila User",
@@ -62,16 +81,22 @@ export default function CallHandler({
 
     setSelectedUser(caller);
     setCallType(callerData?.callType || "video");
-    setActiveIncomingCallData(callerData);
+    setActiveIncomingCallData({
+      ...callerData,
+      initialCandidates: [...bufferedCandidates],
+    });
+    setBufferedCandidates([]);
     setIncomingCall(null);
     setCalling(true);
   };
 
   const handleDecline = () => {
     callSounds.stopAllSounds();
+    setBufferedCandidates([]);
     if (incomingCall) {
       socket.emit("reject-call", {
         to: incomingCall.from || incomingCall._id,
+        toEmail: incomingCall.email,
         toSocketId: incomingCall.fromSocketId,
         reason: "declined",
       });
@@ -83,6 +108,7 @@ export default function CallHandler({
     setCalling(false);
     setIncomingCall(null);
     setActiveIncomingCallData(null);
+    setBufferedCandidates([]);
     setCallType("video");
   };
 

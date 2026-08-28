@@ -10,7 +10,8 @@ import {
   Search as SearchIcon, Chat as ChatIcon, Add as AddIcon,
   ContentCopy as ContentCopyIcon, Groups as GroupsIcon,
   MeetingRoom as MeetingRoomIcon, AddCircle as CreateIcon,
-  Logout as LogoutIcon, Close as CloseIcon, Check as CheckIcon
+  Logout as LogoutIcon, Close as CloseIcon, Check as CheckIcon,
+  Phone as PhoneIcon, Dialpad as DialpadIcon
 } from "@mui/icons-material";
 import { API } from "../api";
 import { socket } from "../socket";
@@ -23,6 +24,7 @@ import Chat from "../components/Chat";
 import ProfileView from "../components/ProfileView";
 import Profile from "../components/Profile";
 import CallHandler from "../components/CallHandler";
+import EmailCallModal from "../components/EmailCallModal";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -59,6 +61,7 @@ export default function Home() {
   const [calling, setCalling] = useState(false);
   const [incomingCall, setIncomingCall] = useState(null);
   const [callType, setCallType] = useState("video");
+  const [emailCallOpen, setEmailCallOpen] = useState(false);
 
   const bottomRef = useRef(null);
   const timerRef = useRef(null);
@@ -112,6 +115,12 @@ export default function Home() {
 
   const initiateCall = (userToCall, type = "video") => {
     handleSelectUser(userToCall);
+    setCallType(type);
+    setCalling(true);
+  };
+
+  const handleStartCallFromEmail = (targetUser, type = "video") => {
+    handleSelectUser(targetUser);
     setCallType(type);
     setCalling(true);
   };
@@ -307,7 +316,10 @@ export default function Home() {
     if (!socket || !currentUser?._id) return;
 
     const joinRoom = () => {
-      socket.emit("join", currentUser._id);
+      socket.emit("join", {
+        userId: currentUser._id,
+        email: currentUser.email,
+      });
     };
 
     if (socket.connected) {
@@ -660,6 +672,28 @@ export default function Home() {
             );
           })}
 
+          {/* 📞 DIRECT CALL BY EMAIL BUTTON */}
+          <Tooltip title="Direct Call by Email ID" placement="right">
+            <IconButton
+              onClick={() => setEmailCallOpen(true)}
+              sx={{
+                width: 46,
+                height: 46,
+                borderRadius: "50%",
+                bgcolor: "#0284c7",
+                color: "#ffffff",
+                boxShadow: "0 4px 12px rgba(2, 132, 199, 0.35)",
+                transition: "all 0.2s ease",
+                "&:hover": {
+                  bgcolor: "#0369a1",
+                  transform: "scale(1.1)",
+                },
+              }}
+            >
+              <PhoneIcon sx={{ fontSize: 22 }} />
+            </IconButton>
+          </Tooltip>
+
           {/* 🌟 ROUND PLUS (+) BUTTON TO JOIN / CREATE SPACE */}
           <Tooltip title="Create or Join a Space / Room" placement="right">
             <IconButton
@@ -785,20 +819,38 @@ export default function Home() {
               )}
             </Box>
 
-            {/* Quick Add Button in header */}
-            <Tooltip title="Join or Create Space">
-              <IconButton
-                size="small"
-                onClick={() => setIsSpaceModalOpen(true)}
-                sx={{
-                  bgcolor: "#f1f5f9",
-                  color: "#2563eb",
-                  "&:hover": { bgcolor: "#e0f2fe" },
-                }}
-              >
-                <AddIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.8 }}>
+              {/* Call by Email Button */}
+              <Tooltip title="Call Persona / User by Email ID">
+                <IconButton
+                  size="small"
+                  onClick={() => setEmailCallOpen(true)}
+                  sx={{
+                    bgcolor: "#e0f2fe",
+                    color: "#0284c7",
+                    "&:hover": { bgcolor: "#bae6fd", transform: "scale(1.05)" },
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  <PhoneIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+
+              {/* Quick Add Button in header */}
+              <Tooltip title="Join or Create Space">
+                <IconButton
+                  size="small"
+                  onClick={() => setIsSpaceModalOpen(true)}
+                  sx={{
+                    bgcolor: "#f1f5f9",
+                    color: "#2563eb",
+                    "&:hover": { bgcolor: "#e0f2fe" },
+                  }}
+                >
+                  <AddIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Box>
           </Toolbar>
         </AppBar>
 
@@ -1002,18 +1054,6 @@ export default function Home() {
           />
 
           <ProfileView open={profileOpen} onClose={() => setProfileOpen(false)} user={selectedUser} />
-          <CallHandler
-            incomingCall={incomingCall}
-            setIncomingCall={setIncomingCall}
-            calling={calling}
-            setCalling={setCalling}
-            currentUser={currentUser}
-            selectedUser={selectedUser}
-            setSelectedUser={setSelectedUser}
-            users={users}
-            callType={callType}
-            setCallType={setCallType}
-          />
         </Box>
       ) : (
         <Box
@@ -1086,22 +1126,43 @@ export default function Home() {
                 <Typography variant="body2" sx={{ color: "#64748b", lineHeight: 1.6, mb: 3 }}>
                   Real-time team workspaces, messaging, and HD calling. Select a Space on the left rail to view your team or click below to get started.
                 </Typography>
-                <Button
-                  variant="contained"
-                  size="large"
-                  startIcon={<AddIcon />}
-                  onClick={() => setIsSpaceModalOpen(true)}
-                  sx={{
-                    py: 1.4,
-                    px: 3,
-                    borderRadius: "16px",
-                    bgcolor: "#2563eb",
-                    fontWeight: 700,
-                    textTransform: "none",
-                  }}
-                >
-                  Join or Create Space
-                </Button>
+                <Box sx={{ display: "flex", gap: 1.5, justifyContent: "center", flexWrap: "wrap" }}>
+                  <Button
+                    variant="contained"
+                    size="large"
+                    startIcon={<AddIcon />}
+                    onClick={() => setIsSpaceModalOpen(true)}
+                    sx={{
+                      py: 1.4,
+                      px: 3,
+                      borderRadius: "16px",
+                      bgcolor: "#2563eb",
+                      fontWeight: 700,
+                      textTransform: "none",
+                      "&:hover": { bgcolor: "#1d4ed8" },
+                    }}
+                  >
+                    Join / Create Space
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="large"
+                    startIcon={<PhoneIcon />}
+                    onClick={() => setEmailCallOpen(true)}
+                    sx={{
+                      py: 1.4,
+                      px: 3,
+                      borderRadius: "16px",
+                      color: "#0284c7",
+                      borderColor: "#0284c7",
+                      fontWeight: 700,
+                      textTransform: "none",
+                      "&:hover": { bgcolor: "#e0f2fe", borderColor: "#0369a1" },
+                    }}
+                  >
+                    Call by Email
+                  </Button>
+                </Box>
               </>
             )}
           </Paper>
@@ -1245,6 +1306,29 @@ export default function Home() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* 📞 WhatsApp-Style Audio & Video Call Overlay & Notifications */}
+      <CallHandler
+        incomingCall={incomingCall}
+        setIncomingCall={setIncomingCall}
+        calling={calling}
+        setCalling={setCalling}
+        currentUser={currentUser}
+        selectedUser={selectedUser}
+        setSelectedUser={setSelectedUser}
+        users={users}
+        callType={callType}
+        setCallType={setCallType}
+      />
+
+      {/* 📧 Direct Dial / Call by Email ID Modal */}
+      <EmailCallModal
+        open={emailCallOpen}
+        onClose={() => setEmailCallOpen(false)}
+        onStartCall={handleStartCallFromEmail}
+        currentUser={currentUser}
+        colleagues={users}
+      />
     </Box>
   );
 }

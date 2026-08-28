@@ -78,6 +78,53 @@ router.get("/users", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
+// ✅ SEARCH USERS (By Name or Email)
+router.get("/search-users", async (req, res) => {
+  try {
+    const { query } = req.query;
+    if (!query || !query.trim()) {
+      return res.status(200).json([]);
+    }
+
+    const cleanQuery = query.trim();
+    const regex = new RegExp(cleanQuery.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+
+    const users = await User.find({
+      $or: [{ name: regex }, { email: regex }],
+    })
+      .select("-password")
+      .limit(20);
+
+    res.status(200).json(users);
+  } catch (err) {
+    console.error("SEARCH USERS ERROR:", err);
+    res.status(500).json({ message: "Server error searching users" });
+  }
+});
+
+// ✅ SEARCH EXACT USER BY EMAIL
+router.get("/search-by-email", async (req, res) => {
+  try {
+    const { email } = req.query;
+    if (!email || !email.trim()) {
+      return res.status(400).json({ message: "Email query parameter is required" });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const user = await User.findOne({ email: cleanEmail }).select("-password");
+
+    if (!user) {
+      return res.status(404).json({ message: "No user found with this email address" });
+    }
+
+    res.status(200).json(user);
+  } catch (err) {
+    console.error("SEARCH BY EMAIL ERROR:", err);
+    res.status(500).json({ message: "Server error searching user by email" });
+  }
+});
+
 // In authRoutes.js
 router.put("/update/:id", async (req, res) => {
   try {

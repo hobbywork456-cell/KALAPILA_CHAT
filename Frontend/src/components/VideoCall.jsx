@@ -35,6 +35,7 @@ const ICE_SERVERS = {
     { urls: "stun:stun3.l.google.com:19302" },
     { urls: "stun:stun4.l.google.com:19302" },
   ],
+  iceCandidatePoolSize: 10,
 };
 
 export default function VideoCall({
@@ -64,8 +65,9 @@ export default function VideoCall({
   const containerRef = useRef(null);
   const peerConnection = useRef(null);
   const localStreamRef = useRef(null);
+  const remoteStreamRef = useRef(new MediaStream());
   const screenStreamRef = useRef(null);
-  const pendingIceCandidates = useRef([]);
+  const pendingIceCandidates = useRef(incomingCallData?.initialCandidates ? [...incomingCallData.initialCandidates] : []);
   const timerIntervalRef = useRef(null);
   const timeoutTimerRef = useRef(null);
   const isCleaningUp = useRef(false);
@@ -83,6 +85,11 @@ export default function VideoCall({
 
   const partnerId = partnerUser?._id;
   const partnerSocketId = partnerUser?.socketId;
+  const partnerSocketIdRef = useRef(partnerSocketId);
+
+  useEffect(() => {
+    if (partnerSocketId) partnerSocketIdRef.current = partnerSocketId;
+  }, [partnerSocketId]);
 
   // Format Duration (MM:SS or HH:MM:SS)
   const formatTime = (secs) => {
@@ -108,13 +115,19 @@ export default function VideoCall({
     if (notify && partnerId) {
       socket.emit("end-call", {
         to: partnerId,
-        toSocketId: partnerSocketId,
+        toEmail: partnerUser?.email,
+        toSocketId: partnerSocketIdRef.current || partnerSocketId,
       });
     }
 
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => track.stop());
       localStreamRef.current = null;
+    }
+
+    if (remoteStreamRef.current) {
+      remoteStreamRef.current.getTracks().forEach((track) => track.stop());
+      remoteStreamRef.current = new MediaStream();
     }
 
     if (screenStreamRef.current) {
@@ -128,7 +141,23 @@ export default function VideoCall({
     }
 
     onEndCall();
-  }, [partnerId, partnerSocketId, onEndCall]);
+  }, [partnerId, partnerSocketId, partnerUser?.email, onEndCall]);
+
+  // Helper to drain buffered candidates once remoteDescription is set
+  const drainPendingCandidates = async () => {
+    if (!peerConnection.current || !peerConnection.current.remoteDescription) return;
+    while (pendingIceCandidates.current.length > 0) {
+      const candidate = pendingIceCandidates.current.shift();
+      if (candidate) {
+        try {
+          await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
+          console.log("✅ Buffered ICE candidate applied successfully");
+        } catch (e) {
+          console.warn("Could not apply buffered ICE candidate:", e);
+        }
+      }
+    }
+  };
 
   // Handle Initial Media Stream and WebRTC Setup
   useEffect(() => {
@@ -169,35 +198,57 @@ export default function VideoCall({
 
         pc.ontrack = (event) => {
           console.log("🔊 WebRTC Remote track received:", event.track.kind, event.streams);
-          const incomingStream = event.streams[0] || new MediaStream([event.track]);
 
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = incomingStream;
-            remoteVideoRef.current.play().catch((e) => console.log("remoteVideo.play() note:", e));
+          // Add incoming track to persistent remote stream accumulator
+          if (event.streams && event.streams[0]) {
+            event.streams[0].getTracks().forEach((track) => {
+              if (!remoteStreamRef.current.getTracks().some((t) => t.id === track.id)) {
+                remoteStreamRef.current.addTrack(track);
+              }
+            });
+          } else if (event.track) {
+            if (!remoteStreamRef.current.getTracks().some((t) => t.id === event.track.id)) {
+              remoteStreamRef.current.addTrack(event.track);
+            }
           }
-          if (remoteAudioRef.current) {
-            remoteAudioRef.current.srcObject = incomingStream;
-            remoteAudioRef.current.play().catch((e) => console.log("remoteAudio.play() note:", e));
+
+          // Attach to remote video
+          if (remoteVideoRef.current && remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
+            remoteVideoRef.current.srcObject = remoteStreamRef.current;
           }
+          remoteVideoRef.current?.play?.().catch((e) => console.log("remoteVideo.play() info:", e));
+
+          // Attach to persistent remote audio
+          if (remoteAudioRef.current && remoteAudioRef.current.srcObject !== remoteStreamRef.current) {
+            remoteAudioRef.current.srcObject = remoteStreamRef.current;
+          }
+          remoteAudioRef.current?.play?.().catch((e) => console.log("remoteAudio.play() info:", e));
         };
 
         pc.onicecandidate = (event) => {
           if (event.candidate && partnerId) {
             socket.emit("ice-candidate", {
               to: partnerId,
+              toEmail: partnerUser?.email,
               candidate: event.candidate,
-              toSocketId: partnerSocketId,
+              toSocketId: partnerSocketIdRef.current || partnerSocketId,
             });
           }
         };
 
         pc.onconnectionstatechange = () => {
+          console.log("📡 WebRTC Connection State:", pc.connectionState);
           if (pc.connectionState === "connected") {
             setCallState("connected");
             callSounds.stopAllSounds();
             callSounds.playConnectedSound();
 
             if (timeoutTimerRef.current) clearTimeout(timeoutTimerRef.current);
+
+            // Ensure audio is playing
+            if (remoteAudioRef.current && remoteStreamRef.current) {
+              remoteAudioRef.current.play().catch(() => {});
+            }
 
             if (!timerIntervalRef.current) {
               timerIntervalRef.current = setInterval(() => {
@@ -211,20 +262,19 @@ export default function VideoCall({
         };
 
         if (isIncoming) {
+          console.log("📥 Setting remote description from incoming offer...");
           await pc.setRemoteDescription(new RTCSessionDescription(incomingCallData.offer));
-
-          while (pendingIceCandidates.current.length > 0) {
-            const candidate = pendingIceCandidates.current.shift();
-            await pc.addIceCandidate(new RTCIceCandidate(candidate));
-          }
+          await drainPendingCandidates();
 
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
 
+          console.log("📤 Emitting answer-call to partner:", partnerId);
           socket.emit("answer-call", {
             to: partnerId,
+            toEmail: partnerUser?.email,
             answer,
-            toSocketId: partnerSocketId,
+            toSocketId: partnerSocketIdRef.current || partnerSocketId,
           });
         } else {
           callSounds.playOutgoingRing();
@@ -245,7 +295,7 @@ export default function VideoCall({
             },
             offer,
             callType,
-            toSocketId: partnerSocketId,
+            toSocketId: partnerSocketIdRef.current || partnerSocketId,
           });
 
           timeoutTimerRef.current = setTimeout(() => {
@@ -267,22 +317,26 @@ export default function VideoCall({
       setCallState("ringing");
     };
 
-    const handleCallAnswered = async ({ answer }) => {
+    const handleCallAnswered = async ({ answer, fromSocketId }) => {
+      console.log("📥 Call answered by recipient, setting remote description");
+      if (fromSocketId) {
+        partnerSocketIdRef.current = fromSocketId;
+      }
       if (peerConnection.current && answer) {
         try {
           await peerConnection.current.setRemoteDescription(new RTCSessionDescription(answer));
-
-          while (pendingIceCandidates.current.length > 0) {
-            const candidate = pendingIceCandidates.current.shift();
-            await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
-          }
+          await drainPendingCandidates();
         } catch (e) {
           console.error("Error setting remote description:", e);
         }
       }
     };
 
-    const handleIceCandidate = async ({ candidate }) => {
+    const handleIceCandidate = async ({ candidate, fromSocketId }) => {
+      if (!candidate) return;
+      if (fromSocketId) {
+        partnerSocketIdRef.current = fromSocketId;
+      }
       if (peerConnection.current && peerConnection.current.remoteDescription) {
         try {
           await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
@@ -553,7 +607,15 @@ export default function VideoCall({
         ref={remoteAudioRef}
         autoPlay
         playsInline
-        style={{ display: "none" }}
+        style={{
+          position: "absolute",
+          top: -9999,
+          left: -9999,
+          width: 1,
+          height: 1,
+          opacity: 0.001,
+          pointerEvents: "none",
+        }}
       />
 
       {/* 1. TOP HEADER OVERLAY */}
