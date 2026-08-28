@@ -13,8 +13,14 @@ const socketLogic = require("./socket/socket");
 // 1. IMPORT THE SCHEDULER
 const initMessageScheduler = require("./middleware/scheduler"); 
 
-// Set DNS servers
-dns.setServers(["1.1.1.1", "8.8.8.8"]);
+// Set DNS servers safely
+try {
+  if (process.env.SET_CUSTOM_DNS === "true") {
+    dns.setServers(["1.1.1.1", "8.8.8.8"]);
+  }
+} catch (e) {
+  console.warn("DNS Server configuration skipped:", e.message);
+}
 
 const app = express();
 const server = http.createServer(app);
@@ -50,7 +56,7 @@ const io = require("socket.io")(server, {
   cors: { 
     origin: (origin, callback) => {
       // Always allow valid web origins without dropping
-      return callback(null, true);
+      return callback(null, origin || true);
     },
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     credentials: true
@@ -62,23 +68,31 @@ const io = require("socket.io")(server, {
 });
 
 // Middleware
-app.use(cors({
+const corsMiddleware = cors({
   origin: (origin, callback) => {
-    return callback(null, true);
+    return callback(null, origin || true);
   },
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
-}));
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"]
+});
+
+app.use(corsMiddleware);
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // ✅ MongoDB Connection
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log("✅ MongoDB Connected (Multi-Tenant Mode)"))
-  .catch(err => {
-    console.error("❌ MongoDB Connection Error:", err.message);
-    process.exit(1);
-  });
+const mongoUri = process.env.MONGO_URI;
+if (!mongoUri) {
+  console.error("❌ CRITICAL: MONGO_URI is missing in environment variables!");
+} else {
+  mongoose.connect(mongoUri)
+    .then(() => console.log("✅ MongoDB Connected (Multi-Tenant Mode)"))
+    .catch(err => {
+      console.error("❌ MongoDB Connection Error:", err.message);
+      console.error("👉 Tip: Ensure MongoDB Atlas Network Access has IP 0.0.0.0/0 (Allow access from anywhere) enabled for Render.");
+    });
+}
 
 // 🛣️ Routes
 app.use("/api/auth", authRoutes);

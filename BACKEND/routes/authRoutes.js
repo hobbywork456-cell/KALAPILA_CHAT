@@ -40,18 +40,29 @@ router.post("/register", async (req, res) => {
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-    const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ message: "User not found" });
+
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email and password are required" });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const user = await User.findOne({ email: cleanEmail });
+    if (!user) {
+      return res.status(400).json({ message: "Account not found with this email" });
+    }
 
     const isMatch = await user.comparePassword(password);
-    if (!isMatch) return res.status(400).json({ message: "Invalid password" });
+    if (!isMatch) {
+      return res.status(400).json({ message: "Incorrect password. Please try again." });
+    }
 
     const userData = user.toObject();
     delete userData.password;
 
     res.status(200).json({ message: "Login successful", user: userData });
   } catch (err) {
-    res.status(500).json({ message: "Server error" });
+    console.error("LOGIN ERROR:", err);
+    res.status(500).json({ message: "Server error during login: " + (err.message || "Unknown error") });
   }
 });
 

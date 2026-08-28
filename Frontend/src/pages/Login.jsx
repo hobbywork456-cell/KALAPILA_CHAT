@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { 
   Box, Paper, TextField, Button, Typography, 
-  Link, InputAdornment, IconButton, MenuItem 
+  Link, InputAdornment, IconButton, MenuItem,
+  CircularProgress
 } from "@mui/material";
 import { toast } from 'sonner';
 import { 
@@ -15,6 +16,7 @@ import { useNavigate } from "react-router-dom";
 function Auth() {
   const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [form, setForm] = useState({
@@ -30,13 +32,16 @@ function Auth() {
 
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
+    if (loading) return;
+
     try {
       if (isLogin) {
         if (!form.email || !form.password) {
           return toast.error("Please enter your email and password.");
         }
+        setLoading(true);
         const res = await API.post("/auth/login", {
-          email: form.email,
+          email: form.email.trim().toLowerCase(),
           password: form.password,
         });
         if (res.data.user) {
@@ -58,9 +63,10 @@ function Auth() {
           return toast.error("Passwords do not match. Please re-enter.");
         }
 
+        setLoading(true);
         const res = await API.post("/auth/register", {
-          name: form.name,
-          email: form.email,
+          name: form.name.trim(),
+          email: form.email.trim().toLowerCase(),
           password: form.password,
         });
 
@@ -69,8 +75,22 @@ function Auth() {
         setForm({ name: "", email: form.email, password: "", confirmPassword: "" });
       }
     } catch (err) {
-      const errorMessage = err.response?.data?.message || "Something went wrong.";
+      console.error("Auth error:", err);
+      let errorMessage = "Something went wrong.";
+
+      if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.code === "ECONNABORTED" || err.message?.includes("timeout")) {
+        errorMessage = "Server is taking longer to respond (Render cold start). Please try again in 10 seconds.";
+      } else if (err.message === "Network Error") {
+        errorMessage = "Cannot reach server. The backend may be waking up, please wait a moment and try again.";
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+
       toast.error(errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -286,6 +306,7 @@ function Auth() {
             fullWidth
             type="submit"
             variant="contained"
+            disabled={loading}
             sx={{
               mt: 1.5,
               py: 1.5,
@@ -301,9 +322,19 @@ function Auth() {
                 transform: "translateY(-2px)",
                 boxShadow: "0 12px 20px rgba(25, 118, 210, 0.3)",
               },
+              "&.Mui-disabled": {
+                bgcolor: "#90caf9",
+                color: "#ffffff",
+              },
             }}
           >
-            {isLogin ? "Log In" : "Create Account"}
+            {loading ? (
+              <CircularProgress size={24} sx={{ color: "#ffffff" }} />
+            ) : isLogin ? (
+              "Log In"
+            ) : (
+              "Create Account"
+            )}
           </Button>
         </Box>
 
