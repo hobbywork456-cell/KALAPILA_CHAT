@@ -159,10 +159,14 @@ export default function Home() {
     if (!currentUser?._id) return;
     try {
       const res = await API.get(`/spaces/user/${currentUser._id}`);
-      setSpaces(res.data);
-      if (selectSpaceId && res.data.length > 0) {
-        const found = res.data.find((s) => s.spaceId === selectSpaceId);
-        if (found) setActiveSpace(found);
+      if (Array.isArray(res.data)) {
+        setSpaces(res.data);
+        if (selectSpaceId) {
+          const found = res.data.find((s) => s.spaceId === selectSpaceId);
+          if (found) setActiveSpace(found);
+        } else if (!activeSpace && res.data.length > 0) {
+          setActiveSpace(res.data[0]);
+        }
       }
     } catch (err) {
       console.error("Error loading spaces:", err);
@@ -171,11 +175,15 @@ export default function Home() {
 
   // 2. Fetch members of the active space
   const fetchSpaceMembers = async (spaceId) => {
-    if (!spaceId || !currentUser) return;
+    if (!spaceId || !currentUser?._id) return;
     try {
       const res = await API.get(`/spaces/${spaceId}/members`);
-      if (res.data && res.data.members) {
-        setUsers(res.data.members.filter((u) => u._id !== currentUser._id));
+      if (res.data && Array.isArray(res.data.members)) {
+        const currentUserIdStr = currentUser._id.toString();
+        const otherMembers = res.data.members.filter(
+          (u) => (u._id?.toString() || u.id?.toString() || u) !== currentUserIdStr
+        );
+        setUsers(otherMembers);
       }
     } catch (err) {
       console.error("Error loading space members:", err);
@@ -197,13 +205,22 @@ export default function Home() {
         userId: currentUser._id,
       });
 
-      toast.success(res.data.message || "Space created successfully!");
+      toast.success(res.data?.message || "Space created successfully!");
       setIsSpaceModalOpen(false);
       setCreateName("");
       setCreateCode("");
-      await fetchUserSpaces(res.data.space.spaceId);
+
+      if (res.data?.space) {
+        setActiveSpace(res.data.space);
+        setSpaces((prev) => {
+          const exists = prev.some((s) => s.spaceId === res.data.space.spaceId);
+          return exists ? prev : [res.data.space, ...prev];
+        });
+      }
+
+      await fetchUserSpaces(res.data?.space?.spaceId);
     } catch (err) {
-      const errMsg = err.response?.data?.message || "Failed to create space.";
+      const errMsg = err.response?.data?.message || "Failed to create space. Please check connection.";
       toast.error(errMsg);
     } finally {
       setIsSubmittingSpace(false);
@@ -224,12 +241,21 @@ export default function Home() {
         userId: currentUser._id,
       });
 
-      toast.success(res.data.message || "Joined space successfully!");
+      toast.success(res.data?.message || "Joined space successfully!");
       setIsSpaceModalOpen(false);
       setJoinCode("");
-      await fetchUserSpaces(res.data.space.spaceId);
+
+      if (res.data?.space) {
+        setActiveSpace(res.data.space);
+        setSpaces((prev) => {
+          const exists = prev.some((s) => s.spaceId === res.data.space.spaceId);
+          return exists ? prev : [res.data.space, ...prev];
+        });
+      }
+
+      await fetchUserSpaces(res.data?.space?.spaceId);
     } catch (err) {
-      const errMsg = err.response?.data?.message || "Failed to join space.";
+      const errMsg = err.response?.data?.message || "Failed to join space. Please check the code.";
       toast.error(errMsg);
     } finally {
       setIsSubmittingSpace(false);

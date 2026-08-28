@@ -23,20 +23,22 @@ router.post("/create", async (req, res) => {
       return res.status(400).json({ message: `Room Code "${cleanCode}" is already taken. Please choose another code.` });
     }
 
-    // Verify creator exists
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ message: "User not found." });
+    // Verify creator exists or use valid ID
+    let user = null;
+    if (mongoose.Types.ObjectId.isValid(userId)) {
+      user = await User.findById(userId);
     }
+    
+    const creatorId = user ? user._id : userId;
 
     // Create space with creator as admin
     const newSpace = new Space({
       spaceId: cleanCode,
       name: cleanName,
-      createdBy: user._id,
+      createdBy: creatorId,
       members: [
         {
-          user: user._id,
+          user: creatorId,
           role: "admin",
           joinedAt: new Date(),
         },
@@ -50,7 +52,7 @@ router.post("/create", async (req, res) => {
     });
   } catch (err) {
     console.error("Create Space Error:", err);
-    return res.status(500).json({ message: "Internal server error creating space." });
+    return res.status(500).json({ message: "Internal server error creating space: " + (err.message || "Unknown error") });
   }
 });
 
@@ -73,7 +75,7 @@ router.post("/join", async (req, res) => {
     }
 
     // Check if user is already a member
-    const isMember = space.members.some((m) => m.user.toString() === userId.toString());
+    const isMember = space.members.some((m) => (m.user?._id || m.user || m)?.toString() === userId.toString());
     if (isMember) {
       return res.status(200).json({
         message: `You are already a member of "${space.name}".`,
@@ -96,7 +98,7 @@ router.post("/join", async (req, res) => {
     });
   } catch (err) {
     console.error("Join Space Error:", err);
-    return res.status(500).json({ message: "Internal server error joining space." });
+    return res.status(500).json({ message: "Internal server error joining space: " + (err.message || "Unknown error") });
   }
 });
 
@@ -106,18 +108,22 @@ router.get("/user/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
-      return res.status(400).json({ message: "Invalid user ID format." });
-    }
+    const userObjectId = mongoose.Types.ObjectId.isValid(userId)
+      ? new mongoose.Types.ObjectId(userId)
+      : null;
 
     const spaces = await Space.find({
-      "members.user": new mongoose.Types.ObjectId(userId),
+      $or: [
+        { "members.user": userId },
+        ...(userObjectId ? [{ "members.user": userObjectId }, { createdBy: userObjectId }] : []),
+        { createdBy: userId },
+      ],
     }).sort({ updatedAt: -1 });
 
     return res.status(200).json(spaces);
   } catch (err) {
     console.error("Fetch User Spaces Error:", err);
-    return res.status(500).json({ message: "Error fetching user spaces." });
+    return res.status(500).json({ message: "Error fetching user spaces: " + (err.message || "Unknown error") });
   }
 });
 

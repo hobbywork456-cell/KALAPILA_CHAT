@@ -94,10 +94,12 @@ if (!mongoUri) {
     });
 }
 
-// 🛣️ Routes
+// 🛣️ Routes (with singular & plural aliases for compatibility)
 app.use("/api/auth", authRoutes);
 app.use("/api/message", messageRoutes);
+app.use("/api/messages", messageRoutes);
 app.use("/api/spaces", spaceRoutes);
+app.use("/api/space", spaceRoutes);
 
 
 // Health Check

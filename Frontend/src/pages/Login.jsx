@@ -1,21 +1,26 @@
 import React, { useState } from "react";
 import { 
   Box, Paper, TextField, Button, Typography, 
-  Link, InputAdornment, IconButton, MenuItem,
+  InputAdornment, IconButton, Tabs, Tab,
   CircularProgress
 } from "@mui/material";
 import { toast } from 'sonner';
 import { 
   Visibility, 
   VisibilityOff,
-  Business as BusinessIcon
+  Login as LoginIcon,
+  PersonAdd as PersonAddIcon,
+  Email as EmailIcon,
+  Lock as LockIcon,
+  Person as PersonIcon
 } from "@mui/icons-material";
 import { API } from "../api";
 import { useNavigate } from "react-router-dom";
 
 function Auth() {
   const navigate = useNavigate();
-  const [isLogin, setIsLogin] = useState(true);
+  // 0 = Sign In, 1 = Create Account
+  const [tabIndex, setTabIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -26,25 +31,42 @@ function Auth() {
     confirmPassword: "",
   });
 
+  const isLogin = tabIndex === 0;
+
   const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+
+  const handleTabChange = (event, newValue) => {
+    setTabIndex(newValue);
+    setForm({ name: "", email: "", password: "", confirmPassword: "" });
   };
 
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
     if (loading) return;
 
-    try {
-      if (isLogin) {
-        if (!form.email || !form.password) {
-          return toast.error("Please enter your email and password.");
-        }
-        setLoading(true);
+    const trimmedEmail = form.email.trim().toLowerCase();
+    const trimmedPassword = form.password;
+    const trimmedName = form.name.trim();
+
+    if (isLogin) {
+      // Sign In Validation
+      if (!trimmedEmail) {
+        return toast.error("Please enter your email address.");
+      }
+      if (!trimmedPassword) {
+        return toast.error("Please enter your password.");
+      }
+
+      setLoading(true);
+      try {
         const res = await API.post("/auth/login", {
-          email: form.email.trim().toLowerCase(),
-          password: form.password,
+          email: trimmedEmail,
+          password: trimmedPassword,
         });
-        if (res.data.user) {
+
+        if (res.data?.user) {
           localStorage.setItem("user", JSON.stringify(res.data.user));
           toast.success("Welcome back!");
           setTimeout(() => {
@@ -52,45 +74,71 @@ function Auth() {
             window.location.reload();
           }, 150);
         }
-      } else {
-        if (!form.name || !form.email || !form.password || !form.confirmPassword) {
-          return toast.error("All fields are required.");
-        }
-        if (form.password.length < 6) {
-          return toast.error("Password must be at least 6 characters long.");
-        }
-        if (form.password !== form.confirmPassword) {
-          return toast.error("Passwords do not match. Please re-enter.");
+      } catch (err) {
+        console.error("Login error:", err);
+        let errorMessage = "Something went wrong.";
+
+        if (err.response?.data?.message) {
+          errorMessage = err.response.data.message;
+        } else if (err.code === "ECONNABORTED" || err.message?.includes("timeout")) {
+          errorMessage = "Server is starting up (Render free tier). Please try again in 10 seconds.";
+        } else if (err.message === "Network Error") {
+          errorMessage = "Unable to connect to server. The backend may be waking up, please wait a moment.";
+        } else if (err.message) {
+          errorMessage = err.message;
         }
 
-        setLoading(true);
+        toast.error(errorMessage);
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      // Register Validation
+      if (!trimmedName) {
+        return toast.error("Please enter your Full Name.");
+      }
+      if (!trimmedEmail) {
+        return toast.error("Please enter your Email Address.");
+      }
+      if (!trimmedPassword) {
+        return toast.error("Please enter a password.");
+      }
+      if (trimmedPassword.length < 6) {
+        return toast.error("Password must be at least 6 characters long.");
+      }
+      if (trimmedPassword !== form.confirmPassword) {
+        return toast.error("Passwords do not match. Please re-enter.");
+      }
+
+      setLoading(true);
+      try {
         const res = await API.post("/auth/register", {
-          name: form.name.trim(),
-          email: form.email.trim().toLowerCase(),
-          password: form.password,
+          name: trimmedName,
+          email: trimmedEmail,
+          password: trimmedPassword,
         });
 
-        toast.success(res.data.message || "Registration Successful! Please log in.");
-        setIsLogin(true);
-        setForm({ name: "", email: form.email, password: "", confirmPassword: "" });
-      }
-    } catch (err) {
-      console.error("Auth error:", err);
-      let errorMessage = "Something went wrong.";
+        toast.success(res.data?.message || "Registration Successful! Please log in.");
+        setTabIndex(0); // Switch to login tab
+        setForm({ name: "", email: trimmedEmail, password: "", confirmPassword: "" });
+      } catch (err) {
+        console.error("Register error:", err);
+        let errorMessage = "Registration failed.";
 
-      if (err.response?.data?.message) {
-        errorMessage = err.response.data.message;
-      } else if (err.code === "ECONNABORTED" || err.message?.includes("timeout")) {
-        errorMessage = "Server is taking longer to respond (Render cold start). Please try again in 10 seconds.";
-      } else if (err.message === "Network Error") {
-        errorMessage = "Cannot reach server. The backend may be waking up, please wait a moment and try again.";
-      } else if (err.message) {
-        errorMessage = err.message;
-      }
+        if (err.response?.data?.message) {
+          errorMessage = err.response.data.message;
+        } else if (err.code === "ECONNABORTED" || err.message?.includes("timeout")) {
+          errorMessage = "Server is starting up. Please try again in a moment.";
+        } else if (err.message === "Network Error") {
+          errorMessage = "Cannot reach server. Please wait a moment and try again.";
+        } else if (err.message) {
+          errorMessage = err.message;
+        }
 
-      toast.error(errorMessage);
-    } finally {
-      setLoading(false);
+        toast.error(errorMessage);
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -102,10 +150,10 @@ function Auth() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        // Light Blue Gradient Background
         background: "linear-gradient(135deg, #e3f2fd 0%, #bbdefb 50%, #90caf9 100%)",
         overflow: "hidden",
         position: "relative",
+        p: 2,
       }}
     >
       {/* Soft Floating Glows */}
@@ -137,24 +185,24 @@ function Auth() {
       <Paper
         elevation={0}
         sx={{
-          p: { xs: 3, sm: 5 },
-          width: "90%",
-          maxWidth: 420,
+          p: { xs: 3, sm: 4.5 },
+          width: "100%",
+          maxWidth: 440,
           textAlign: "center",
           borderRadius: "32px",
-          // --- Frosted Glass Effect ---
-          background: "rgba(255, 255, 255, 0.75)",
-          backdropFilter: "blur(18px)",
-          border: "1px solid rgba(255, 255, 255, 0.85)",
-          boxShadow: "0 20px 40px rgba(0,0,0,0.06)",
+          background: "rgba(255, 255, 255, 0.85)",
+          backdropFilter: "blur(20px)",
+          border: "1.5px solid rgba(255, 255, 255, 0.9)",
+          boxShadow: "0 20px 45px rgba(21, 101, 192, 0.12)",
           zIndex: 2,
         }}
       >
-        <Box sx={{ display: "flex", justifyContent: "center", mb: 2 }}>
+        {/* Brand Logo & Title */}
+        <Box sx={{ display: "flex", justifyContent: "center", mb: 1.5 }}>
           <img
             src="/favicon.svg"
             alt="Kalapila Logo"
-            style={{ width: 68, height: 68, filter: "drop-shadow(0 8px 20px rgba(37, 99, 235, 0.4))" }}
+            style={{ width: 64, height: 64, filter: "drop-shadow(0 8px 18px rgba(37, 99, 235, 0.35))" }}
           />
         </Box>
 
@@ -171,34 +219,88 @@ function Auth() {
           KALA <span style={{ color: "#42a5f5" }}>PILA</span>
         </Typography>
 
-        <Typography variant="body2" sx={{ mb: 3.5, color: "#546e7a", fontWeight: 500, opacity: 0.85 }}>
-          {isLogin ? "Sign in to your account" : "Create your account"}
+        <Typography variant="body2" sx={{ mb: 2.5, color: "#64748b", fontWeight: 500 }}>
+          Real-time workspaces & secure communication
         </Typography>
 
+        {/* Prominent Mode Tabs: Sign In / Create Account */}
+        <Paper
+          elevation={0}
+          sx={{
+            bgcolor: "#e2e8f0",
+            borderRadius: "14px",
+            p: "4px",
+            mb: 3,
+          }}
+        >
+          <Tabs
+            value={tabIndex}
+            onChange={handleTabChange}
+            variant="fullWidth"
+            sx={{
+              minHeight: 40,
+              "& .MuiTabs-indicator": { display: "none" },
+              "& .MuiTab-root": {
+                minHeight: 38,
+                borderRadius: "11px",
+                textTransform: "none",
+                fontWeight: 700,
+                fontSize: "0.92rem",
+                color: "#64748b",
+                transition: "all 0.2s ease",
+                "&.Mui-selected": {
+                  bgcolor: "#ffffff",
+                  color: "#1565c0",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                },
+              },
+            }}
+          >
+            <Tab icon={<LoginIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Sign In" />
+            <Tab icon={<PersonAddIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Create Account" />
+          </Tabs>
+        </Paper>
+
         <Box component="form" onSubmit={handleSubmit} sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {/* Full Name (Registration only) */}
           {!isLogin && (
             <TextField
               fullWidth
               size="small"
               label="Full Name"
               name="name"
+              placeholder="e.g. John Doe"
               value={form.name}
               onChange={handleChange}
               sx={lightGlassInput}
-              required
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <PersonIcon sx={{ color: "#1976d2", fontSize: 20 }} />
+                  </InputAdornment>
+                ),
+              }}
             />
           )}
 
+          {/* Email Address */}
           <TextField
             fullWidth
             size="small"
             label="Email Address"
             name="email"
             type="email"
+            placeholder="name@example.com"
             value={form.email}
             onChange={handleChange}
             sx={lightGlassInput}
-            required
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <EmailIcon sx={{ color: "#1976d2", fontSize: 20 }} />
+                </InputAdornment>
+              ),
+            }}
           />
 
           {/* Password with Eye Toggle */}
@@ -208,30 +310,16 @@ function Auth() {
             label="Password"
             name="password"
             type={showPassword ? "text" : "password"}
+            placeholder="Enter password"
             value={form.password}
             onChange={handleChange}
             sx={lightGlassInput}
-            required
-            slotProps={{
-              input: {
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      type="button"
-                      aria-label="toggle password visibility"
-                      onClick={() => setShowPassword((prev) => !prev)}
-                      onMouseDown={(e) => e.preventDefault()}
-                      edge="end"
-                      size="small"
-                      sx={{ color: "#1976d2", mr: 0.2 }}
-                    >
-                      {showPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              },
-            }}
             InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <LockIcon sx={{ color: "#1976d2", fontSize: 20 }} />
+                </InputAdornment>
+              ),
               endAdornment: (
                 <InputAdornment position="end">
                   <IconButton
@@ -250,39 +338,25 @@ function Auth() {
             }}
           />
 
-          {/* Confirm Password (only for Registration) */}
+          {/* Confirm Password (Registration only) */}
           {!isLogin && (
             <TextField
               fullWidth
               size="small"
               label="Confirm Password"
               name="confirmPassword"
+              placeholder="Re-enter password"
               type={showConfirmPassword ? "text" : "password"}
               value={form.confirmPassword}
               onChange={handleChange}
               onKeyDown={(e) => e.key === "Enter" && handleSubmit(e)}
               sx={lightGlassInput}
-              required
-              slotProps={{
-                input: {
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        type="button"
-                        aria-label="toggle confirm password visibility"
-                        onClick={() => setShowConfirmPassword((prev) => !prev)}
-                        onMouseDown={(e) => e.preventDefault()}
-                        edge="end"
-                        size="small"
-                        sx={{ color: "#1976d2", mr: 0.2 }}
-                      >
-                        {showConfirmPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                },
-              }}
               InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <LockIcon sx={{ color: "#1976d2", fontSize: 20 }} />
+                  </InputAdornment>
+                ),
                 endAdornment: (
                   <InputAdornment position="end">
                     <IconButton
@@ -302,25 +376,26 @@ function Auth() {
             />
           )}
 
+          {/* Submit Action Button */}
           <Button
             fullWidth
             type="submit"
             variant="contained"
             disabled={loading}
             sx={{
-              mt: 1.5,
-              py: 1.5,
+              mt: 1,
+              py: 1.4,
               bgcolor: "#1976d2",
-              borderRadius: "16px",
-              fontWeight: "bold",
+              borderRadius: "14px",
+              fontWeight: 800,
               textTransform: "none",
               fontSize: "1rem",
-              boxShadow: "0 8px 16px rgba(25, 118, 210, 0.2)",
-              transition: "all 0.3s ease",
+              boxShadow: "0 8px 20px rgba(25, 118, 210, 0.25)",
+              transition: "all 0.2s ease",
               "&:hover": {
                 bgcolor: "#1565c0",
-                transform: "translateY(-2px)",
-                boxShadow: "0 12px 20px rgba(25, 118, 210, 0.3)",
+                transform: "translateY(-1px)",
+                boxShadow: "0 12px 24px rgba(25, 118, 210, 0.35)",
               },
               "&.Mui-disabled": {
                 bgcolor: "#90caf9",
@@ -331,28 +406,11 @@ function Auth() {
             {loading ? (
               <CircularProgress size={24} sx={{ color: "#ffffff" }} />
             ) : isLogin ? (
-              "Log In"
+              "Sign In"
             ) : (
               "Create Account"
             )}
           </Button>
-        </Box>
-
-        <Box sx={{ mt: 3.5, pt: 2, borderTop: "1px solid rgba(0,0,0,0.06)" }}>
-          <Typography variant="body2" color="textSecondary">
-            {isLogin ? "New to Kalapila?" : "Already have an account?"}{" "}
-            <Link
-              component="button"
-              type="button"
-              onClick={() => {
-                setIsLogin(!isLogin);
-                setForm({ name: "", email: "", password: "", confirmPassword: "" });
-              }}
-              sx={{ color: "#1976d2", fontWeight: 700, textDecoration: "none" }}
-            >
-              {isLogin ? "Create an account" : "Sign in instead"}
-            </Link>
-          </Typography>
         </Box>
       </Paper>
     </Box>
@@ -363,13 +421,13 @@ function Auth() {
 const lightGlassInput = {
   "& .MuiOutlinedInput-root": {
     borderRadius: "14px",
-    backgroundColor: "rgba(255, 255, 255, 0.5)",
-    transition: "0.3s",
-    "& fieldset": { borderColor: "rgba(0, 0, 0, 0.05)" },
+    backgroundColor: "rgba(255, 255, 255, 0.7)",
+    transition: "0.2s ease",
+    "& fieldset": { borderColor: "rgba(0, 0, 0, 0.08)" },
     "&:hover fieldset": { borderColor: "#90caf9" },
     "&.Mui-focused fieldset": { borderColor: "#1976d2", borderWidth: "2px" },
   },
-  "& .MuiInputLabel-root": { fontSize: "0.9rem", color: "#78909c" },
+  "& .MuiInputLabel-root": { fontSize: "0.9rem", color: "#64748b" },
 };
 
 export default Auth;
