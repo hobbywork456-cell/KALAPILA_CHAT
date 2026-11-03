@@ -1,0 +1,13 @@
+/* Remove default browser padding and margins */
+html, body, #root {
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  overflow: hidden !important; /* Disables the browser-level scrollbar */
+}
+
+/* Ensure box-sizing doesn't add width to elements with borders */
+* {
+  box-sizing: border-box;
+}

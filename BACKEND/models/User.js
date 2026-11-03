@@ -1,63 +1,41 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
-const userSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: true,
-    trim: true
+const userSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true, trim: true, maxlength: 60 },
+    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    password: { type: String, required: true, minlength: 6, select: false },
+    subscriptionId: { type: String, default: "", index: true }, // legacy field
+    role: { type: String, enum: ["admin", "member", "super"], default: "member" },
+    bio: { type: String, default: "Hey there! I am using Kalapila.", trim: true, maxlength: 200 },
+    profilePic: { type: String, default: "" },
+    lastSeen: { type: Date, default: Date.now },
   },
-  email: {
-    type: String,
-    required: true,
-    unique: true,
-    lowercase: true,
-    trim: true
-  },
-  password: {
-    type: String,
-    required: true,
-    minlength: 6
-  },
-  subscriptionId: { 
-    type: String, 
-    required: false,
-    default: "",
-    index: true 
-  }, 
-  role: { 
-    type: String, 
-    enum: ['admin', 'member', 'super'], 
-    default: 'member' 
-  },
-  bio: { 
-    type: String, 
-    default: "Hey there! I am using ChatApp.",
-    trim: true 
-  },
-  profilePic: { 
-    type: String, 
-    default: "" 
-  }
-}, { timestamps: true });
+  { timestamps: true }
+);
 
-// ✅ FIXED PRE-SAVE: Removed 'next' because we are using async
 userSchema.pre("save", async function () {
-  // Only hash if password is modified
   if (!this.isModified("password")) return;
-
-  try {
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
-    // No next() call needed here!
-  } catch (error) {
-    throw error; // Throwing error will stop the save process
-  }
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
 });
 
-// ✅ COMPARE PASSWORD METHOD
-userSchema.methods.comparePassword = async function (enteredPassword) {
-  return await bcrypt.compare(enteredPassword, this.password);
+userSchema.methods.comparePassword = function (plain) {
+  return bcrypt.compare(plain, this.password);
+};
+
+// Public shape sent to other clients (never includes password)
+userSchema.methods.toPublic = function () {
+  return {
+    _id: this._id,
+    name: this.name,
+    email: this.email,
+    bio: this.bio,
+    profilePic: this.profilePic,
+    lastSeen: this.lastSeen,
+    createdAt: this.createdAt,
+  };
 };
 
 module.exports = mongoose.model("User", userSchema);

@@ -1,44 +1,35 @@
 const Message = require("../models/Message");
-const User = require("../models/User");
+const { deliverMessage } = require("../socket/delivery");
 
+// Releases scheduled messages when their time arrives and delivers them only to the
+// people in that conversation (DM pair or space members).
 const initMessageScheduler = (io) => {
-  const checkAndReleaseScheduledMessages = async () => {
+  let running = false;
+  const tick = async () => {
+    if (running) return;
+    running = true;
     try {
-      const now = new Date();
-
-      // 1. Find messages that are scheduled and time has passed
-      const pendingMessages = await Message.find({
-        status: "scheduled",
-        scheduledTime: { $lte: now }
-      });
-
-      if (pendingMessages.length > 0) {
-        for (let msg of pendingMessages) {
-          // 2. Update status to 'sent'
-          msg.status = "sent";
-          await msg.save();
-
-          // 3. Real-time delivery via Socket.io
-          if (io) {
-            const sender = await User.findById(msg.sender);
-            const messageToEmit = msg.toObject();
-            messageToEmit.senderName = sender?.name || "Someone";
-
-            // Broadcast to all sockets (client-side filters for active chat)
-            io.emit("receiveMessage", messageToEmit);
-
-            console.log(`🕒 [Scheduler]: Message ${msg._id} released from ${msg.sender} (${sender?.name}) to ${msg.receiver}`);
-          }
-        }
+      const due = await Message.find({ status: "scheduled", scheduledTime: { $lte: new Date() } })
+        .select("_id")
+        .limit(200)
+        .lean();
+      for (const { _id } of due) {
+        const now = new Date();
+        // Atomic claim so a message is never sent twice
+        const r = await Message.collection.updateOne(
+          { _id, status: "scheduled" },
+          { $set: { status: "sent", createdAt: now, updatedAt: now } }
+        );
+        if (r.modifiedCount === 1) await deliverMessage(io, _id);
       }
     } catch (err) {
-      console.error("[Scheduler Error]:", err);
+      console.error("[Scheduler]", err.message);
+    } finally {
+      running = false;
     }
   };
-
-  // Run immediately on boot, then check every 10 seconds
-  checkAndReleaseScheduledMessages();
-  setInterval(checkAndReleaseScheduledMessages, 10000);
+  tick();
+  return setInterval(tick, 10000);
 };
 
-module.exports = initMessageScheduler;
+module.exports = initMessageScheduler;

@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Kalapila Premium Brand Gradient -->
+    <linearGradient id="kpGradient" x1="15%" y1="10%" x2="85%" y2="90%">
+      <stop offset="0%" stop-color="#0284c7" />
+      <stop offset="40%" stop-color="#1d6fee" />
+      <stop offset="75%" stop-color="#1e40af" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+
+    <!-- Top Soft Highlight -->
+    <radialGradient id="kpHighlight" cx="32%" cy="28%" r="65%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.45" />
+      <stop offset="50%" stop-color="#2563eb" stop-opacity="0.05" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.3" />
+    </radialGradient>
+
+    <!-- Crisp Soft Drop Shadow for White Emblem -->
+    <filter id="whiteGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#091e42" flood-opacity="0.38" />
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000000" flood-opacity="0.25" />
+    </filter>
+  </defs>
+
+  <!-- Background Circle Badge -->
+  <circle cx="256" cy="256" r="236" fill="url(#kpGradient)" />
+  <circle cx="256" cy="256" r="236" fill="url(#kpHighlight)" />
+  <circle cx="256" cy="256" r="234" fill="none" stroke="#ffffff" stroke-width="3" stroke-opacity="0.2" />
+
+  <!-- Stylized K Leaf Emblem in Crisp White -->
+  <g filter="url(#whiteGlow)" fill="none" stroke="#ffffff" stroke-width="26" stroke-linecap="round" stroke-linejoin="round">
+    <!-- 1. Left Vertical Stem (Pill Bar) -->
+    <line x1="166" y1="144" x2="166" y2="368" />
+
+    <!-- 2. Upper Branch & Outer Leaf Contour -->
+    <path d="M 166 270 C 175 220, 218 168, 280 168 C 318 168, 354 156, 376 142 C 362 188, 350 236, 314 262 C 282 284, 238 284, 198 274" />
+
+    <!-- 3. Inner Leaf Vein Curve -->
+    <path d="M 276 170 C 304 195, 308 232, 274 262" stroke-width="22" />
+
+    <!-- 4. Lower Flowing Swoosh Curve -->
+    <path d="M 166 280 C 178 326, 216 366, 268 366 C 304 366, 338 346, 368 298" />
+  </g>
+</svg>

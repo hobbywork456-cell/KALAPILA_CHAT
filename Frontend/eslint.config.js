@@ -24,6 +24,10 @@ export default defineConfig([
     },
     rules: {
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      // Resetting dialog state when it opens is intentional in this app
+      'react-hooks/set-state-in-effect': 'warn',
+      // Context files export a provider + hook together
+      'react-refresh/only-export-components': ['warn', { allowExportNames: ['useAuth', 'useChat', 'useCall', 'useThemeMode', 'chatKey'] }],
     },
   },
 ])

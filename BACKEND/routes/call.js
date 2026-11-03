@@ -1,103 +1,144 @@
-// socket/call.js
-const callLogic = (socket, io, users) => {
-  const emitToUser = (targetId, event, payload, fallbackSocketId, targetEmail) => {
-    const idStr = targetId?.toString();
-    const emailStr = targetEmail?.toString().trim().toLowerCase();
+// WebRTC call signalling over Socket.IO.
+// A call is tracked on the server so we can handle busy users, multiple devices,
+// ring time-outs and dropped connections reliably.
+const crypto = require("crypto");
+const { isId } = require("../utils/helpers");
+const { userRoom } = require("../socket/delivery");
+const presence = require("../socket/presence");
 
-    // Check if target is directly an email
-    const isDirectEmail = idStr && idStr.includes("@");
-    const cleanEmail = isDirectEmail ? idStr.toLowerCase() : emailStr;
-    const cleanId = isDirectEmail ? null : idStr;
+const RING_TIMEOUT_MS = 45 * 1000;
+const calls = new Map(); // callId -> call
+const userCall = new Map(); // userId -> callId
 
-    let targetSocket = fallbackSocketId;
-    if (!targetSocket && cleanId && users[cleanId]) {
-      targetSocket = users[cleanId];
-    }
-    if (!targetSocket && cleanEmail && users[cleanEmail]) {
-      targetSocket = users[cleanEmail];
-    }
+const cleanup = (call) => {
+  if (!call) return;
+  clearTimeout(call.timer);
+  calls.delete(call.id);
+  if (userCall.get(call.callerId) === call.id) userCall.delete(call.callerId);
+  if (userCall.get(call.calleeId) === call.id) userCall.delete(call.calleeId);
+};
 
-    console.log(`[Call]: Emitting '${event}' to (id: ${cleanId}, email: ${cleanEmail}, socket: ${targetSocket || fallbackSocketId})`);
+const callLogic = (socket, io) => {
+  const me = socket.data.userId;
+  const ack0 = (a) => (typeof a === "function" ? a : () => {});
 
-    let delivered = false;
-
-    if (targetSocket) {
-      io.to(targetSocket).emit(event, payload);
-      delivered = true;
-    }
-    if (cleanId && cleanId !== targetSocket) {
-      io.to(cleanId).emit(event, payload);
-      delivered = true;
-    }
-    if (cleanEmail && cleanEmail !== targetSocket) {
-      io.to(cleanEmail).emit(event, payload);
-      delivered = true;
-    }
-
-    return delivered;
+  // Who is "the other side" of this call for the current socket?
+  const otherTarget = (call) => {
+    if (socket.id === call.callerSocket) return call.calleeSocket || userRoom(call.calleeId);
+    if (socket.id === call.calleeSocket) return call.callerSocket;
+    return null;
   };
 
-  // 1. Initiate Call
-  socket.on("call-user", ({ to, toEmail, from, offer, name, callerName, caller, callType, toSocketId }) => {
-    const callerNameFinal = caller?.name || name || callerName || "Kalapila User";
-    const callerEmailFinal = caller?.email || "";
-    const callerProfilePicFinal = caller?.profilePic || "";
-
-    console.log("📞 call-user received:", { to, toEmail, from, callerName: callerNameFinal, callType, toSocketId });
-
-    const delivered = emitToUser(
-      to,
-      "incoming-call",
-      {
-        from,
-        _id: from,
-        name: callerNameFinal,
-        email: callerEmailFinal,
-        profilePic: callerProfilePicFinal,
-        offer,
-        callType: callType || "video",
-        fromSocketId: socket.id,
-      },
-      toSocketId,
-      toEmail
-    );
-
-    if (delivered) {
-      socket.emit("call-ringing");
-    } else {
-      socket.emit("call-failed", { message: "Recipient is not reachable right now." });
+  // 1. Start a call
+  socket.on("call-user", ({ to, offer, callType } = {}, ack) => {
+    ack = ack0(ack);
+    if (!isId(to) || to === me || !offer) return ack({ ok: false, reason: "invalid" });
+    if (userCall.has(me)) {
+      // stale call of mine (e.g. refreshed page) – end it
+      const old = calls.get(userCall.get(me));
+      if (old) {
+        io.to([old.callerSocket, old.calleeSocket || userRoom(old.calleeId)].filter(Boolean)).emit("call-ended", { callId: old.id, reason: "ended" });
+        cleanup(old);
+      }
     }
+    if (!presence.isOnline(to)) return ack({ ok: false, reason: "offline" });
+    if (userCall.has(to)) return ack({ ok: false, reason: "busy" });
+
+    const call = {
+      id: crypto.randomBytes(8).toString("hex"),
+      callerId: me,
+      callerSocket: socket.id,
+      calleeId: to,
+      calleeSocket: null,
+      type: callType === "audio" ? "audio" : "video",
+      state: "ringing",
+    };
+    call.timer = setTimeout(() => {
+      if (calls.get(call.id)?.state === "ringing") {
+        io.to([call.callerSocket, userRoom(call.calleeId)]).emit("call-ended", { callId: call.id, reason: "no-answer" });
+        cleanup(call);
+      }
+    }, RING_TIMEOUT_MS);
+    calls.set(call.id, call);
+    userCall.set(me, call.id);
+    userCall.set(to, call.id);
+
+    io.to(userRoom(to)).emit("incoming-call", {
+      callId: call.id,
+      from: socket.data.user,
+      offer,
+      callType: call.type,
+    });
+    ack({ ok: true, callId: call.id });
   });
 
-  // 2. Answer Call
-  socket.on("answer-call", ({ to, toEmail, answer, toSocketId }) => {
-    console.log("✅ answer-call received for:", { to, toEmail, toSocketId });
-    emitToUser(to, "call-answered", { answer, fromSocketId: socket.id }, toSocketId, toEmail);
+  // 2. Callee answers (on one of their devices)
+  socket.on("answer-call", ({ callId, answer } = {}, ack) => {
+    ack = ack0(ack);
+    const call = calls.get(callId);
+    if (!call || call.calleeId !== me || call.state !== "ringing") return ack({ ok: false });
+    call.state = "active";
+    call.calleeSocket = socket.id;
+    clearTimeout(call.timer);
+    io.to(call.callerSocket).emit("call-answered", { callId, answer });
+    socket.to(userRoom(me)).emit("call-handled-elsewhere", { callId });
+    ack({ ok: true });
   });
 
-  // 3. ICE Candidate Exchange
-  socket.on("ice-candidate", ({ to, toEmail, candidate, toSocketId }) => {
-    emitToUser(to, "ice-candidate", { candidate, fromSocketId: socket.id }, toSocketId, toEmail);
+  // 3. Callee declines
+  socket.on("reject-call", ({ callId, reason } = {}) => {
+    const call = calls.get(callId);
+    if (!call || call.calleeId !== me) return;
+    io.to(call.callerSocket).emit("call-rejected", { callId, reason: reason || "declined" });
+    socket.to(userRoom(me)).emit("call-handled-elsewhere", { callId });
+    cleanup(call);
   });
 
-  // 4. End Call
-  socket.on("end-call", ({ to, toEmail, toSocketId }) => {
-    emitToUser(to, "call-ended", { fromSocketId: socket.id }, toSocketId, toEmail);
+  // 4. ICE candidates
+  socket.on("ice-candidate", ({ callId, candidate } = {}) => {
+    const call = calls.get(callId);
+    if (!call || !candidate) return;
+    const target = otherTarget(call);
+    if (target) io.to(target).emit("ice-candidate", { callId, candidate });
   });
 
-  // 5. Reject Call
-  socket.on("reject-call", ({ to, toEmail, toSocketId, reason }) => {
-    emitToUser(to, "call-rejected", { reason: reason || "declined", fromSocketId: socket.id }, toSocketId, toEmail);
+  // 5. Generic renegotiation / ICE-restart relay
+  socket.on("call-signal", ({ callId, data } = {}) => {
+    const call = calls.get(callId);
+    if (!call) return;
+    const target = otherTarget(call);
+    if (target) io.to(target).emit("call-signal", { callId, data });
   });
 
-  // 6. Media State Toggled (Mute Mic, Disable Cam)
-  socket.on("toggle-media", ({ to, toEmail, toSocketId, isMuted, isVideoOff }) => {
-    emitToUser(to, "peer-media-toggled", { isMuted, isVideoOff, fromSocketId: socket.id }, toSocketId, toEmail);
+  // 6. Mic / camera state
+  socket.on("toggle-media", ({ callId, isMuted, isVideoOff } = {}) => {
+    const call = calls.get(callId);
+    if (!call) return;
+    const target = otherTarget(call);
+    if (target) io.to(target).emit("peer-media-toggled", { callId, isMuted, isVideoOff });
   });
 
-  // 7. Switch Call Type (Audio <-> Video)
-  socket.on("switch-call-type", ({ to, toEmail, toSocketId, newType }) => {
-    emitToUser(to, "call-type-switched", { newType, fromSocketId: socket.id }, toSocketId, toEmail);
+  // 7. Hang up / cancel
+  socket.on("end-call", ({ callId } = {}) => {
+    const call = calls.get(callId);
+    if (!call) return;
+    const target = otherTarget(call) || (call.callerId === me ? userRoom(call.calleeId) : call.callerSocket);
+    io.to(target).emit("call-ended", { callId, reason: call.state === "ringing" ? "cancelled" : "ended" });
+    cleanup(call);
+  });
+
+  // 8. Connection dropped
+  socket.on("disconnect", () => {
+    for (const call of Array.from(calls.values())) {
+      const isCaller = call.callerSocket === socket.id;
+      const isCallee = call.calleeSocket === socket.id;
+      const calleeGone = call.state === "ringing" && call.calleeId === me && !presence.isOnline(me);
+      if (isCaller || isCallee || calleeGone) {
+        const target = isCaller ? call.calleeSocket || userRoom(call.calleeId) : call.callerSocket;
+        io.to(target).emit("call-ended", { callId: call.id, reason: "disconnected" });
+        cleanup(call);
+      }
+    }
   });
 };
 

@@ -1,0 +1,55 @@
+# Builds the Kalapila Android app (debug APK) in the cloud.
+# Note: the repo stores the app folders as "BACKEND" and "Frontend" (GitHub is case-sensitive).
+# Run it from GitHub: Actions tab -> "Build Android APK" -> Run workflow.
+# When it finishes, download "kalapila-android-apk" from the run's Artifacts and install it on your phone.
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "Frontend/**"
+      - ".github/workflows/android-apk.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Frontend/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web app (uses Frontend/.env.production)
+        run: npm run build
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Build debug APK
+        working-directory: Frontend/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kalapila-android-apk
+          path: Frontend/android/app/build/outputs/apk/debug/app-debug.apk
