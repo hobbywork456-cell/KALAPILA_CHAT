@@ -32,6 +32,11 @@ export default function Login() {
       const r = isLogin
         ? await API.post("/auth/login", { email, password: form.password })
         : await API.post("/auth/register", { name: form.name.trim(), email, password: form.password });
+      // An outdated backend answers without a token – don't greet the user and leave them stuck here.
+      if (!r.data?.token || !r.data?.user) {
+        toast.error("The server is out of date and couldn't sign you in. Please try again later.");
+        return;
+      }
       login(r.data);
       toast.success(isLogin ? `Welcome back, ${r.data.user.name.split(" ")[0]}!` : "Your account is ready!");
     } catch (err) {

@@ -12,13 +12,20 @@ const readUser = () => {
   }
 };
 
+// A login against an outdated backend could store the literal string "undefined".
+const readToken = () => {
+  const t = localStorage.getItem(TOKEN_KEY);
+  return t && t !== "undefined" && t !== "null" ? t : null;
+};
+
 export function AuthProvider({ children }) {
-  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY));
-  const [user, setUser] = useState(() => (localStorage.getItem(TOKEN_KEY) ? readUser() : null));
+  const [token, setToken] = useState(readToken);
+  const [user, setUser] = useState(() => (readToken() ? readUser() : null));
 
   useEffect(() => {
     // Old builds stored an unauthenticated "user" object – drop it.
     localStorage.removeItem("user");
+    if (!readToken()) localStorage.removeItem(TOKEN_KEY);
   }, []);
 
   const logout = useCallback(() => {

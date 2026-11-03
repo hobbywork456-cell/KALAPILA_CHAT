@@ -129,10 +129,12 @@ const callLogic = (socket, io) => {
 
   // 8. Connection dropped
   socket.on("disconnect", () => {
+    // This runs before presence is updated, so check the user's room (already left by this socket).
+    const meOnline = !!io.sockets.adapter.rooms.get(userRoom(me))?.size;
     for (const call of Array.from(calls.values())) {
       const isCaller = call.callerSocket === socket.id;
       const isCallee = call.calleeSocket === socket.id;
-      const calleeGone = call.state === "ringing" && call.calleeId === me && !presence.isOnline(me);
+      const calleeGone = call.state === "ringing" && call.calleeId === me && !meOnline;
       if (isCaller || isCallee || calleeGone) {
         const target = isCaller ? call.calleeSocket || userRoom(call.calleeId) : call.callerSocket;
         io.to(target).emit("call-ended", { callId: call.id, reason: "disconnected" });

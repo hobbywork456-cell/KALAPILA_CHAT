@@ -86,7 +86,8 @@ router.get("/:id/:key", async (req, res) => {
       let start = m && m[1] ? parseInt(m[1], 10) : 0;
       let end = m && m[2] ? parseInt(m[2], 10) : size - 1;
       if (m && !m[1] && m[2]) { start = Math.max(size - parseInt(m[2], 10), 0); end = size - 1; }
-      if (start >= size || end >= size || start > end) {
+      end = Math.min(end, size - 1); // players may ask past the end – serve what exists (RFC 7233)
+      if (start >= size || start > end) {
         res.setHeader("Content-Range", `bytes */${size}`);
         return res.status(416).end();
       }

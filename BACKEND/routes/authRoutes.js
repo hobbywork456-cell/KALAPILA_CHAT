@@ -4,6 +4,7 @@ const User = require("../models/User");
 const { signToken, requireAuth } = require("../middleware/auth");
 const { escapeRegex, isId } = require("../utils/helpers");
 const presence = require("../socket/presence");
+const { userRoom } = require("../socket/delivery");
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -94,6 +95,8 @@ router.put("/profile", async (req, res) => {
     if (!user) return res.status(404).json({ message: "User not found." });
 
     const io = req.app.get("io");
+    // Keep the name shown in typing indicators current on this user's open sockets
+    if (io) for (const s of await io.in(userRoom(req.userId)).fetchSockets()) s.data.user = user.toPublic();
     io?.emit("user:updated", user.toPublic());
     res.json(user.toPublic());
   } catch (err) {

@@ -421,6 +421,9 @@ export function ChatProvider({ children }) {
       const clientId = newClientId();
       const pending = pendingBase(chat, { clientId, message: text.trim(), replyTo });
       patchChat(key, (c) => ({ messages: [...c.messages, pending] }));
+      // The receiver clears "typing…" when the message lands, so announce the next keystroke straight away
+      clearTimeout(typingState.current.timer);
+      typingState.current.key = null;
       const res = await emitAck("sendMessage", {
         chatType: chat.type,
         to: chat.id,
